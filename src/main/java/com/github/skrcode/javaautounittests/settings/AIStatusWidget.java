@@ -1,6 +1,5 @@
-package com.github.skrcode.javaautounittests;
+package com.github.skrcode.javaautounittests.settings;
 
-import com.github.skrcode.javaautounittests.settings.AISettings;
 import com.intellij.openapi.options.ShowSettingsUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.wm.StatusBar;

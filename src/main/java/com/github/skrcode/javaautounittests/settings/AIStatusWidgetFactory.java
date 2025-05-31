@@ -1,4 +1,4 @@
-package com.github.skrcode.javaautounittests;
+package com.github.skrcode.javaautounittests.settings;
 
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.wm.StatusBar;
@@ -35,10 +35,9 @@ public class AIStatusWidgetFactory implements StatusBarWidgetFactory {
         return StatusBarWidgetFactory.super.createWidget(project);
     }
 
-    //    @Override
-//    public void createWidget(@NotNull Project project, @NotNull StatusBar statusBar) {
-//        statusBar.addWidget(new AIStatusWidget(project), "after Encoding", project);
-//    }
+    public void createWidget(@NotNull Project project, @NotNull StatusBar statusBar) {
+        statusBar.addWidget(new AIStatusWidget(project), "after Encoding", project);
+    }
 
     @Override
     public boolean isConfigurable() {
