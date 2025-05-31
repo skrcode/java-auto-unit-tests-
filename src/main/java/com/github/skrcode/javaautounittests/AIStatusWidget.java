@@ -1,16 +1,15 @@
 package com.github.skrcode.javaautounittests;
 
+import com.github.skrcode.javaautounittests.settings.AISettings;
 import com.intellij.openapi.options.ShowSettingsUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.wm.StatusBar;
 import com.intellij.openapi.wm.StatusBarWidget;
-import com.intellij.openapi.wm.StatusBarWidgetProvider;
 import com.intellij.openapi.wm.StatusBarWidget.MultipleTextValuesPresentation;
 import com.intellij.util.Consumer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import javax.swing.*;
 import java.awt.event.MouseEvent;
 
 public class AIStatusWidget implements StatusBarWidget, MultipleTextValuesPresentation {

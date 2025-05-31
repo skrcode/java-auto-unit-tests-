@@ -1,5 +1,6 @@
 package com.github.skrcode.javaautounittests;
 
+import com.github.skrcode.javaautounittests.settings.AISettings;
 import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;

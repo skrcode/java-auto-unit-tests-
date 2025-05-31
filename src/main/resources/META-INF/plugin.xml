@@ -41,20 +41,26 @@
                     class="com.github.skrcode.javaautounittests.GenerateTestAction"
                     text="Generate Tests"/>
             <action id="OpenSettingsAction"
-                    class="com.github.skrcode.javaautounittests.OpenAISettingsAction"
+                    class="com.github.skrcode.javaautounittests.settings.OpenAISettingsAction"
                     text="Settings"/>
             <action id="ModelDisplayAction"
                     class="com.github.skrcode.javaautounittests.ModelDisplayAction"
                     text="Model"/>
         </group>
     </actions>
+    <actions>
+        <action id="DoWorkInBackground"
+                class="com.github.skrcode.javaautounittests.DoWorkInBackgroundAction"
+                text="Run Background Task"
+                description="Runs a task with progress"/>
+    </actions>
 
 
 
 
     <extensions defaultExtensionNs="com.intellij">
-        <applicationService serviceImplementation="com.github.skrcode.javaautounittests.AISettings"/>
-        <projectConfigurable instance="com.github.skrcode.javaautounittests.AISettingsConfigurable"/>
+        <applicationService serviceImplementation="com.github.skrcode.javaautounittests.settings.AISettings"/>
+        <projectConfigurable instance="com.github.skrcode.javaautounittests.settings.AISettingsConfigurable"/>
         <statusBarWidgetFactory implementation="com.github.skrcode.javaautounittests.AIStatusWidgetFactory"/>
         <notificationGroup
                 id="JAIPilot - AI Unit Test Generator Feedback"

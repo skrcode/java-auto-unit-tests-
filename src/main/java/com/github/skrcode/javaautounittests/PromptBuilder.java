@@ -11,11 +11,15 @@ import java.util.Set;
 
 public class PromptBuilder {
 
-    public static String buildPrompt(Project project, PsiClass targetClass) {
+    public static String buildPrompt(Project project, PsiClass targetClass, String packageName) {
         StringBuilder sb = new StringBuilder();
 
         // 1. Full source of the right-clicked class
-        sb.append("Generate high quality robust unit tests. Output is only the test class. Include all imports and class package.");
+        sb.append("You are a Java test-generation assistant. Generate high quality robust unit tests. Output is only the test class. Include all imports and class package. Follow test method name convention - test<ClassName>_<Scenario>_<ResponseType>. Cover a negative edge case when possible.");
+        sb.append("// Test Class Package\n");
+        sb.append(packageName);
+        sb.append("// Class Import\n");
+        sb.append(packageName+"."+targetClass.getName());
         sb.append("// Class\n");
         sb.append(targetClass.getText()).append("\n\n");
 
