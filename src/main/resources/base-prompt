@@ -32,7 +32,7 @@ Produce exactly one self-contained JUnit-Jupiter test class that drives
 7. Ensure cumulative coverage target is met; add cases if required.
 
 ### Input Class 
-{inputclass}
+{{inputclass}}
 
 ### Existing test class - to be modified in output
 {{testclass}}
