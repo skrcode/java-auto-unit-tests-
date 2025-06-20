@@ -1,22 +1,37 @@
 package com.github.skrcode.javaautounittests;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 
-public final class PromptBuilder {
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
-    public static String build(ContextModel ctx) {
-        try {
-            String yaml = MAPPER.writeValueAsString(ctx);
-            StringBuilder sb = new StringBuilder();
-            sb.append("You are an elite Java test generator.\n")
-                    .append("If existingTestSource is present, update it; otherwise create anew.\n")
-                    .append("Aim for >90% line coverage.\n")
-                    .append("Use JUnit 5, Mockito, AssertJ.\n")
-                    .append("---\n")
-                    .append(yaml)
-                    .append("---");
-            return sb.toString();
-        } catch (Exception e) { throw new RuntimeException(e); }
+public class PromptBuilder {
+
+    public static String loadPromptFromUrl(String url) {
+        try (InputStream in = new URL(url).openStream()) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to load prompt from: " + url, e);
+        }
+    }
+
+    public static String build(String basePrompt, ContextModel ctx) {
+        if (basePrompt == null || ctx == null) {
+            throw new IllegalArgumentException("basePrompt and ctx must not be null");
+        }
+
+        return basePrompt
+//                .replace("{{inputclass}}", safe(ctx.qualifiedName))
+                .replace("{{inputclass}}", safe(ctx.fullSource))
+                .replace("{{erroroutput}}", safe(ctx.errorMessage))
+//                .replace("{{outputCoverage}}", safe(ctx.outputCoverage))
+                .replace("{{testclass}}", safe(ctx.existingTestSource));
+    }
+
+    private static String safe(String val) {
+        return val != null ? val : "";
     }
 }

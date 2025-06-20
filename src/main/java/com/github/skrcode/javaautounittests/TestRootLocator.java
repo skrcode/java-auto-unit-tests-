@@ -1,12 +1,18 @@
 package com.github.skrcode.javaautounittests;
 
 import com.intellij.ide.util.PackageUtil;
+import com.intellij.openapi.module.Module;
+import com.intellij.openapi.module.ModuleUtilCore;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.roots.ProjectFileIndex;
-import com.intellij.openapi.roots.ProjectRootManager;
+import com.intellij.openapi.roots.*;
+import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.jetbrains.jps.model.java.JavaSourceRootType;
+
+import java.io.IOException;
 
 /**
  * Finds (or lazily creates) the corresponding <project>/src/test/java package that mirrors the
@@ -14,47 +20,49 @@ import org.jetbrains.annotations.NotNull;
  * non‑existent {@code createPackage()} utility.
  */
 public final class TestRootLocator {
-
-    /** @return a writable PsiDirectory under *src/test/java* matching the source file's package. */
     public static @NotNull PsiDirectory getOrCreateTestRoot(Project project, PsiFile sourceFile) {
-        PsiPackage srcPkg = JavaDirectoryService.getInstance()
-                .getPackage(sourceFile.getContainingDirectory());
-        if (srcPkg == null) throw new IllegalStateException("No package for source file");
+        PsiDirectory sourceDir = sourceFile.getContainingDirectory();
+        if (sourceDir == null)
+            throw new IllegalStateException("Source file has no directory");
 
-        // 1 ▸ Try to locate an existing *test* source root that already has or can host the package
+        PsiPackage psiPackage = JavaDirectoryService.getInstance().getPackage(sourceDir);
+        if (psiPackage == null)
+            throw new IllegalStateException("Cannot determine package for source file");
+
+        String packageName = psiPackage.getQualifiedName();
+
+        Module module = ModuleUtilCore.findModuleForPsiElement(sourceFile);
+        if (module == null)
+            throw new IllegalStateException("Source file is not part of any module");
+
         ProjectFileIndex index = ProjectRootManager.getInstance(project).getFileIndex();
+
+        // ✅ Primary: Find real test source roots in this module
         for (VirtualFile root : ProjectRootManager.getInstance(project).getContentSourceRoots()) {
-            if (!index.isInTestSourceContent(root)) continue; // only test roots
-            PsiDirectory dir = PsiManager.getInstance(project).findDirectory(root);
-            if (dir == null) continue;
+            if (!index.isInTestSourceContent(root)) continue;
+            if (!module.equals(index.getModuleForFile(root))) continue;
+
+            PsiDirectory rootDir = PsiManager.getInstance(project).findDirectory(root);
+            if (rootDir == null) continue;
 
             PsiDirectory pkgDir = PackageUtil.findOrCreateDirectoryForPackage(
-                    project, srcPkg.getQualifiedName(), dir, true);
-            if (pkgDir != null) return pkgDir; // success
+                    module, packageName, rootDir, true, true);
+            if (pkgDir != null) return pkgDir;
         }
+        // ❗Fallback: Try path replacement (main → test)
+        VirtualFile sourceVF = sourceFile.getVirtualFile();
+        if (sourceVF != null) {
+            String testGuessPath = sourceVF.getPath().replace("/src/main/", "/src/test/");
+            int lastSlash = testGuessPath.lastIndexOf('/');
+            if (lastSlash > 0) testGuessPath = testGuessPath.substring(0, lastSlash); // remove filename
 
-        // 2 ▸ No test root? Create <repo>/src/test/java + package path.
-        VirtualFile[] sourceRoots = ProjectRootManager.getInstance(project).getContentSourceRoots();
-        if (sourceRoots.length == 0) throw new IllegalStateException("No content root available");
-
-        VirtualFile mainRoot = sourceRoots[0];
-        VirtualFile parent   = mainRoot.getParent();
-        VirtualFile javaTestRoot;
-        try {
-            VirtualFile src  = parent.findChild("src");
-            if (src == null) src = parent.createChildDirectory(project, "src");
-            VirtualFile test = src.findChild("test");
-            if (test == null) test = src.createChildDirectory(project, "test");
-            VirtualFile java = test.findChild("java");
-            if (java == null) java = test.createChildDirectory(project, "java");
-            javaTestRoot = java;
-        } catch (Exception e) { throw new RuntimeException(e); }
-
-        PsiDirectory baseDir = PsiManager.getInstance(project).findDirectory(javaTestRoot);
-        PsiDirectory pkgDir = PackageUtil.findOrCreateDirectoryForPackage(
-                project, srcPkg.getQualifiedName(), baseDir, true);
-        if (pkgDir == null) throw new IllegalStateException("Could not create test package directory");
-        return pkgDir;
+            VirtualFile guessedTestDir = LocalFileSystem.getInstance().findFileByPath(testGuessPath);
+            if (guessedTestDir != null) {
+                PsiDirectory fallbackDir = PsiManager.getInstance(project).findDirectory(guessedTestDir);
+                if (fallbackDir != null) return fallbackDir;
+            }
+        }
+        throw new IllegalStateException("Could not locate or create test directory for source file");
     }
 
     private TestRootLocator() {}

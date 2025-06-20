@@ -48,12 +48,6 @@
                     text="Model"/>
         </group>
     </actions>
-<!--    <actions>-->
-<!--        <action id="DoWorkInBackground"-->
-<!--                class="com.github.skrcode.javaautounittests.DoWorkInBackgroundAction"-->
-<!--                text="Run Background Task"-->
-<!--                description="Runs a task with progress"/>-->
-<!--    </actions>-->
 
 
 

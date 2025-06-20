@@ -21,30 +21,35 @@ public final class TestGenerationWorker {
     private static final int MAX_ITERATIONS  = 5;
     private static final double TARGET_RATIO = 0.90;   // 90 %
 
-    public static void process(Project project, PsiClass cut, @NotNull ProgressIndicator ind) {
+    public static void process(Project project, PsiClass cut, @NotNull ProgressIndicator ind, PsiDirectory testRoot) {
         String testFileName = cut.getName() + "Test.java";
-
-        /* —— 0. Resolve test root *once* so the user is not prompted every iteration —— */
-        PsiDirectory testRoot = WriteCommandAction.writeCommandAction(project).compute(() ->
-                TestRootLocator.getOrCreateTestRoot(project, cut.getContainingFile())
-        );
-
-        Ref<PsiFile> testFile = Ref.create(testRoot.findFile(testFileName));
-
+        String outputMessage = "";
+        String promptUrl = "https://raw.githubusercontent.com/skrcode/java-auto-unit-tests/refs/heads/main/src/main/resources/base-prompt";
+        String promptTemplate = PromptBuilder.loadPromptFromUrl(promptUrl);
         for (int attempt = 1; attempt <= MAX_ITERATIONS && !ind.isCanceled(); attempt++) {
+
+            Ref<PsiFile> testFile = Ref.create(testRoot.findFile(testFileName));
             ind.setText2("Iteration " + attempt);
 
-            /* —— 1. Build context ———————————————————————————————— */
             ContextModel ctx = ReadAction.compute(() -> ContextExtractor.buildContext(cut));
             ctx.existingTestSource = testFile.get() == null ? null : testFile.get().getText();
 
-            /* —— 2. Generate test code via LLM ———————————————— */
-//            String prompt     = PromptBuilder.build(ctx);
-            String testSource = "Sammple file";//JAIPilotLLM.invokeAI(prompt);
+            String testSource;
+            PsiFile existing = testFile.get();
+            if (existing != null) {
+                PsiDocumentManager docMgr = PsiDocumentManager.getInstance(project);
+                var doc = docMgr.getDocument(existing);
+                if (doc != null) {
+                    outputMessage = executeCompile(project, testFile);
+                    if(outputMessage.length() == 0) break;
+                }
+                ctx.errorMessage = outputMessage;
+            }
+            String prompt = PromptBuilder.build(promptTemplate,ctx);
+            testSource = JAIPilotLLM.invokeAI(prompt);
 
             /* —— 3. Write/update the file in the *single* testRoot —— */
             WriteCommandAction.runWriteCommandAction(project, () -> {
-                PsiFile existing = testFile.get();
                 PsiFile newPsi;
                 if (existing != null) {
                     PsiDocumentManager docMgr = PsiDocumentManager.getInstance(project);
@@ -66,16 +71,29 @@ public final class TestGenerationWorker {
                 }
                 JavaCodeStyleManager.getInstance(project).optimizeImports(newPsi);
                 CodeStyleManager.getInstance(project).reformat(newPsi);
-                testFile.set(newPsi);
+                testFile.set(existing);
             });
 
             /* —— 4. JaCoCo coverage ———————————————————————————————— */
-            double ratio = CoverageJacocoUtil.runCoverageFor(project, cut);
-            if (ratio >= TARGET_RATIO) {
-                ind.setText2("Coverage " + (int) (ratio * 100) + "%  ✔ done");
-                return;
-            }
+
+//            if (ratio >= TARGET_RATIO) {
+//                ind.setText2("Coverage " + (int) (ratio * 100) + "%  ✔ done");
+//                return;
+//            }
         }
+    }
+
+    private static String executeCompile(Project project, Ref<PsiFile> testFile) {
+        PsiFile psiFile = testFile.get();
+        if (psiFile instanceof PsiClassOwner) {
+            PsiClass[] classes = ((PsiClassOwner) psiFile).getClasses();
+            if (classes.length > 0) {
+                PsiClass testClass = classes[0];  // First top-level class
+                return CoverageJacocoUtil.compileJUnitClass(project, testClass);
+            }
+            return "Class not found";
+        }
+        return "Class not found";
     }
 
     private TestGenerationWorker() {}

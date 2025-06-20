@@ -34,7 +34,7 @@ public class AISettingsConfigurable implements Configurable {
         apiKeyField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
 
         // Model dropdown
-        modelCombo = new JComboBox<>(new String[]{"gpt-3.5-turbo", "gpt-4", "gpt-4o"});
+        modelCombo = new JComboBox<>(new String[]{"gpt-4.1-nano","gpt-4.1-mini","gpt-4o-mini","gpt-4.1","gpt-4o","o4-mini","o3-mini","o1-mini","o3","o1"});
         modelCombo.setAlignmentX(Component.LEFT_ALIGNMENT);
         modelCombo.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
 
