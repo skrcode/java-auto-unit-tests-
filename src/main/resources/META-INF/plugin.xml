@@ -55,7 +55,7 @@
     <extensions defaultExtensionNs="com.intellij">
         <applicationService serviceImplementation="com.github.skrcode.javaautounittests.settings.AISettings"/>
         <projectConfigurable instance="com.github.skrcode.javaautounittests.settings.AISettingsConfigurable"/>
-        <statusBarWidgetFactory implementation="com.github.skrcode.javaautounittests.settings.AIStatusWidgetFactory"/>
+        <statusBarWidgetFactory id="AIStatusWidget" implementation="com.github.skrcode.javaautounittests.settings.AIStatusWidgetFactory"/>
         <notificationGroup
                 id="JAIPilot - AI Unit Test Generator Feedback"
                 displayType="BALLOON"
