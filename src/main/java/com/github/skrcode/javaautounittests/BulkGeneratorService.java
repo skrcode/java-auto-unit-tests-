@@ -1,6 +1,5 @@
 package com.github.skrcode.javaautounittests;
 
-import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
@@ -8,6 +7,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiDirectory;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
@@ -16,7 +16,7 @@ import java.util.List;
  */
 public final class BulkGeneratorService {
 
-    public static void enqueue(Project project, List<PsiClass> classes) {
+    public static void enqueue(Project project, List<PsiClass> classes, @Nullable PsiDirectory testRoot) {
         ProgressManager.getInstance().run(new Task.Backgroundable(
                 project,
                 "JAIPilot – Generating tests for " + classes.size() + " class(es)",
@@ -31,10 +31,10 @@ public final class BulkGeneratorService {
                     indicator.setText("Processing " + cut.getQualifiedName());
                     indicator.setFraction(idx++ / (double) classes.size());
 
-                    // Resolve test root inside a write action (once per class)
-                    PsiDirectory testRoot = WriteCommandAction.writeCommandAction(project).compute(() ->
-                            TestRootLocator.getOrCreateTestRoot(project, cut.getContainingFile())
-                    );
+
+//                            WriteCommandAction.writeCommandAction(project).compute(() ->
+//                                    TestRootLocator.getOrCreateTestRoot(project, cut.getContainingFile())
+//                            );
 
                     TestGenerationWorker.process(project, cut, indicator, testRoot);
                 }

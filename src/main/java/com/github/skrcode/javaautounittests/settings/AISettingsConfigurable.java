@@ -59,7 +59,7 @@ public class AISettingsConfigurable implements Configurable {
         panel.add(Box.createVerticalStrut(4));
         panel.add(modelCombo);
         panel.add(Box.createVerticalStrut(12));
-        panel.add(new JLabel("Select Test Directory:"));
+        panel.add(new JLabel("Select Test Root (e.g., src/test/java):"));
         panel.add(Box.createVerticalStrut(4));
         panel.add(testDirField);
         panel.add(Box.createVerticalGlue());
