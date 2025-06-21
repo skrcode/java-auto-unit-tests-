@@ -35,10 +35,6 @@ public class AIStatusWidgetFactory implements StatusBarWidgetFactory {
         return StatusBarWidgetFactory.super.createWidget(project);
     }
 
-    public void createWidget(@NotNull Project project, @NotNull StatusBar statusBar) {
-        statusBar.addWidget(new AIStatusWidget(project), "after Encoding", project);
-    }
-
     @Override
     public boolean isConfigurable() {
         return false;

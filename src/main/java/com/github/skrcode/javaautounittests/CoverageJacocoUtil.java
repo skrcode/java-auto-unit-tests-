@@ -71,96 +71,96 @@ public class CoverageJacocoUtil {
 
 
 
-    public static String compileAndRun(Project project, PsiClass testClass){
-        if (project == null || testClass == null || !testClass.isValid()) {
-            return "ERROR: invalid project or PsiClass";
-        }
-
-        /* ─────────────── 1. Compile whole project ─────────────── */
-        // Step 1: Compile
-        StringBuilder reply = new StringBuilder();
-        CountDownLatch compileLatch = new CountDownLatch(1);
-        VirtualFile fileToCompile = testClass.getContainingFile().getVirtualFile();
-
-        CompilerManager.getInstance(project).compile(
-                new VirtualFile[]{fileToCompile},
-                (boolean aborted, int errors, int warnings, com.intellij.openapi.compiler.CompileContext context) -> {
-                    if (aborted) {
-                        reply.append("COMPILATION_ABORTED");
-                    } else if (errors > 0) {
-                        reply.append("COMPILATION_FAILED\n");
-                        for (CompilerMessage msg : context.getMessages(CompilerMessageCategory.ERROR)) {
-                            reply.append(msg.getMessage()).append('\n');
-                        }
-                    }
-                    compileLatch.countDown();
-                }
-        );
-
-
-        await(compileLatch, 1); // wait up to 1 minute
-        if (reply.length() > 0) return reply.toString().trim();
-
-
-        /* ─────────────── 2. Build a JUnit run configuration ───── */
-        String qName = testClass.getQualifiedName();
-        JUnitConfigurationType type = JUnitConfigurationType.getInstance();
-        RunnerAndConfigurationSettings cfgSettings =
-                RunManager.getInstance(project)
-                        .createConfiguration(qName, type.getConfigurationFactories()[0]);
-
-        JUnitConfiguration cfg = (JUnitConfiguration) cfgSettings.getConfiguration();
-        cfg.setModule(ModuleUtilCore.findModuleForPsiElement(testClass));
-        cfg.setMainClass(testClass);
-
-        /* ─────────────── 3. Run & capture console ─────────────── */
-        CountDownLatch runLatch = new CountDownLatch(1);
-        final int[] exit = {0};
-
-
-        ExecutionEnvironment env = null;
-        try {
-            env = ExecutionEnvironmentBuilder
-                    .create(DefaultRunExecutor.getRunExecutorInstance(), cfgSettings) // ← NO Project arg
-                    .activeTarget()                       // optional but handy
-                    .build();
-        } catch (ExecutionException e) {
-            throw new RuntimeException(e);
-        }
-
-        env.assignNewExecutionId();                   // mandatory when created programmatically
-
-        env.setCallback(descriptor -> {
-            ProcessHandler ph = descriptor.getProcessHandler();
-            if (ph == null) {
-                reply.append("RUN_ERROR: process handler is null");
-                runLatch.countDown();
-                return;
-            }
-            ph.addProcessListener(new ProcessAdapter() {
-
-
-                @Override
-                public void onTextAvailable(@NotNull ProcessEvent e, @NotNull Key outputType) {
-                    reply.append(e.getText());
-                }
-
-                @Override
-                public void processTerminated(ProcessEvent e) {
-                    exit[0] = e.getExitCode();
-                    runLatch.countDown();
-                }
-            });
-        });
-
-// 3) Launch the run configuration
-        ProgramRunnerUtil.executeConfiguration(env, /*showSettingsDialog*/ false, /*assignNewId*/ false);
-
-        await(runLatch, 1);               // ≤ 5 min test timeout
-
-        return exit[0] == 0 ? ""          // empty string ⇒ all green
-                : reply.toString().trim();
-    }
+//    public static String compileAndRun(Project project, PsiClass testClass){
+//        if (project == null || testClass == null || !testClass.isValid()) {
+//            return "ERROR: invalid project or PsiClass";
+//        }
+//
+//        /* ─────────────── 1. Compile whole project ─────────────── */
+//        // Step 1: Compile
+//        StringBuilder reply = new StringBuilder();
+//        CountDownLatch compileLatch = new CountDownLatch(1);
+//        VirtualFile fileToCompile = testClass.getContainingFile().getVirtualFile();
+//
+//        CompilerManager.getInstance(project).compile(
+//                new VirtualFile[]{fileToCompile},
+//                (boolean aborted, int errors, int warnings, com.intellij.openapi.compiler.CompileContext context) -> {
+//                    if (aborted) {
+//                        reply.append("COMPILATION_ABORTED");
+//                    } else if (errors > 0) {
+//                        reply.append("COMPILATION_FAILED\n");
+//                        for (CompilerMessage msg : context.getMessages(CompilerMessageCategory.ERROR)) {
+//                            reply.append(msg.getMessage()).append('\n');
+//                        }
+//                    }
+//                    compileLatch.countDown();
+//                }
+//        );
+//
+//
+//        await(compileLatch, 1); // wait up to 1 minute
+//        if (reply.length() > 0) return reply.toString().trim();
+//
+//
+//        /* ─────────────── 2. Build a JUnit run configuration ───── */
+//        String qName = testClass.getQualifiedName();
+//        JUnitConfigurationType type = JUnitConfigurationType.getInstance();
+//        RunnerAndConfigurationSettings cfgSettings =
+//                RunManager.getInstance(project)
+//                        .createConfiguration(qName, type.getConfigurationFactories()[0]);
+//
+//        JUnitConfiguration cfg = (JUnitConfiguration) cfgSettings.getConfiguration();
+//        cfg.setModule(ModuleUtilCore.findModuleForPsiElement(testClass));
+//        cfg.setMainClass(testClass);
+//
+//        /* ─────────────── 3. Run & capture console ─────────────── */
+//        CountDownLatch runLatch = new CountDownLatch(1);
+//        final int[] exit = {0};
+//
+//
+//        ExecutionEnvironment env = null;
+//        try {
+//            env = ExecutionEnvironmentBuilder
+//                    .create(DefaultRunExecutor.getRunExecutorInstance(), cfgSettings) // ← NO Project arg
+//                    .activeTarget()                       // optional but handy
+//                    .build();
+//        } catch (ExecutionException e) {
+//            throw new RuntimeException(e);
+//        }
+//
+//        env.assignNewExecutionId();                   // mandatory when created programmatically
+//
+//        env.setCallback(descriptor -> {
+//            ProcessHandler ph = descriptor.getProcessHandler();
+//            if (ph == null) {
+//                reply.append("RUN_ERROR: process handler is null");
+//                runLatch.countDown();
+//                return;
+//            }
+//            ph.addProcessListener(new ProcessAdapter() {
+//
+//
+//                @Override
+//                public void onTextAvailable(@NotNull ProcessEvent e, @NotNull Key outputType) {
+//                    reply.append(e.getText());
+//                }
+//
+//                @Override
+//                public void processTerminated(ProcessEvent e) {
+//                    exit[0] = e.getExitCode();
+//                    runLatch.countDown();
+//                }
+//            });
+//        });
+//
+//// 3) Launch the run configuration
+//        ProgramRunnerUtil.executeConfiguration(env, /*showSettingsDialog*/ false, /*assignNewId*/ false);
+//
+//        await(runLatch, 1);               // ≤ 5 min test timeout
+//
+//        return exit[0] == 0 ? ""          // empty string ⇒ all green
+//                : reply.toString().trim();
+//    }
 
     /* Utility: wait for ≤ `minutes`, ignore interrupts but restore flag */
     private static void await(CountDownLatch latch, int minutes) {
