@@ -1,5 +1,9 @@
 package com.github.skrcode.javaautounittests;
 
+import com.intellij.ide.BrowserUtil;
+import com.intellij.notification.NotificationGroupManager;
+import com.intellij.notification.NotificationType;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
@@ -30,12 +34,6 @@ public final class BulkGeneratorService {
 
                     indicator.setText("Processing " + cut.getQualifiedName());
                     indicator.setFraction(idx++ / (double) classes.size());
-
-
-//                            WriteCommandAction.writeCommandAction(project).compute(() ->
-//                                    TestRootLocator.getOrCreateTestRoot(project, cut.getContainingFile())
-//                            );
-
                     TestGenerationWorker.process(project, cut, indicator, testRoot);
                 }
             }
@@ -48,24 +46,25 @@ public final class BulkGeneratorService {
 
             @Override
             public void onSuccess() {
-//                ApplicationManager.getApplication().invokeLater(() -> {
-//                    NotificationGroupManager.getInstance()
-//                            .getNotificationGroup("JAIPilot - AI Unit Test Generator Feedback")
-//                            .createNotification(
-//                                    "All tests generated!",
-//                                    "If JAIPilot helped you, please leave a review and ⭐️ rate it - it helps a lot! ",
-//                                    NotificationType.INFORMATION
-//                            )
-//                            .setListener((notification, event) -> {
-//                                String url = event.getURL().toString();
-//                                if (url.startsWith("https://plugins.jetbrains.com")) {
-//                                    BrowserUtil.browse(url);
-//                                    notification.expire();
-//                                }
-//                            })
-//                            .notify(project);
-//                });
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    NotificationGroupManager.getInstance()
+                            .getNotificationGroup("JAIPilot - AI Unit Test Generator Feedback")
+                            .createNotification(
+                                    "All tests generated!",
+                                    "If JAIPilot helped you, please <a href=\"https://plugins.jetbrains.com/plugin/27706-jaipilot--ai-unit-test-generator/edit/reviews/new\">leave a review</a> and ⭐️ rate it — it helps a lot!",
+                                    NotificationType.INFORMATION
+                            )
+                            .setListener((notification, event) -> {
+                                String url = event.getURL().toString();
+                                if (url.startsWith("https://plugins.jetbrains.com")) {
+                                    BrowserUtil.browse(url);
+                                    notification.expire();
+                                }
+                            })
+                            .notify(project);
+                });
             }
+
 
         });
     }

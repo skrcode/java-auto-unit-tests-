@@ -19,7 +19,7 @@ public final class JAIPilotLLM {
             StructuredResponseCreateParams<ResponseOutput> params = ResponseCreateParams.builder()
                     .input(prompt)
                     .text(ResponseOutput.class)
-                    .model(ChatModel.GPT_4O_MINI)
+                    .model(AISettings.getInstance().getModel())
                     .build();
 
             return client.responses().create(params).output().stream()
