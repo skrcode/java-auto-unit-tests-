@@ -61,6 +61,7 @@ public final class TestGenerationWorker {
                 executeAttempt++;
                 continue;
             }
+            break;
 //
 //      outputCoverage = coverage(testclass)
 //      if(outputCoverage < 90%)
