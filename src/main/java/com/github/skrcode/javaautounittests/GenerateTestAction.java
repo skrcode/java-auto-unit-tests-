@@ -22,8 +22,17 @@ public class GenerateTestAction extends AnAction implements DumbAware {
 
     @Override
     public void update(@NotNull AnActionEvent e) {
-        PsiElement elem = e.getData(CommonDataKeys.PSI_ELEMENT);
-        boolean enable = elem instanceof PsiClass || elem instanceof PsiDirectory || elem instanceof PsiPackage;
+        PsiElement psi = e.getData(CommonDataKeys.PSI_ELEMENT);
+        PsiFile file = e.getData(CommonDataKeys.PSI_FILE);
+        VirtualFile vfile = e.getData(CommonDataKeys.VIRTUAL_FILE);
+
+        boolean enable =
+                psi instanceof PsiClass ||
+                        psi instanceof PsiDirectory ||
+                        psi instanceof PsiPackage ||
+                        file instanceof PsiJavaFile ||
+                        (vfile != null && vfile.getName().endsWith(".java"));
+
         e.getPresentation().setEnabledAndVisible(enable);
     }
 
