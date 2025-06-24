@@ -30,24 +30,30 @@
     </description>
 
     <actions>
+        <!-- Popup group shown in Editor + Project View -->
         <group id="AIAutoUnitTestGroup"
                popup="true"
-               class="com.github.skrcode.javaautounittests.AIGenerateTestActionGroup"
-               text="JAIPilot - AI Unit Test Generator">
-            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+               text="JAIPilot – AI Unit Test Generator">
+
+            <!-- where to show the group -->
+            <add-to-group group-id="EditorPopupMenu"   anchor="first"/>
             <add-to-group group-id="ProjectViewPopupMenu" anchor="first"/>
 
+            <!-- child actions -->
             <action id="GenerateTestsAction"
                     class="com.github.skrcode.javaautounittests.GenerateTestAction"
                     text="Generate Tests"/>
+
             <action id="OpenSettingsAction"
                     class="com.github.skrcode.javaautounittests.settings.OpenAISettingsAction"
                     text="Settings"/>
+
             <action id="ModelDisplayAction"
                     class="com.github.skrcode.javaautounittests.ModelDisplayAction"
                     text="Model"/>
         </group>
     </actions>
+
 
 
 
