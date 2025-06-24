@@ -20,21 +20,21 @@ import java.util.stream.Collectors;
  */
 public class GenerateTestAction extends AnAction implements DumbAware {
 
-    @Override
-    public void update(@NotNull AnActionEvent e) {
-        PsiElement psi = e.getData(CommonDataKeys.PSI_ELEMENT);
-        PsiFile file = e.getData(CommonDataKeys.PSI_FILE);
-        VirtualFile vfile = e.getData(CommonDataKeys.VIRTUAL_FILE);
-
-        boolean enable =
-                psi instanceof PsiClass ||
-                        psi instanceof PsiDirectory ||
-                        psi instanceof PsiPackage ||
-                        file instanceof PsiJavaFile ||
-                        (vfile != null && vfile.getName().endsWith(".java"));
-
-        e.getPresentation().setEnabledAndVisible(enable);
-    }
+//    @Override
+//    public void update(@NotNull AnActionEvent e) {
+//        PsiElement psi = e.getData(CommonDataKeys.PSI_ELEMENT);
+//        PsiFile file = e.getData(CommonDataKeys.PSI_FILE);
+//        VirtualFile vfile = e.getData(CommonDataKeys.VIRTUAL_FILE);
+//
+//        boolean enable =
+//                psi instanceof PsiClass ||
+//                        psi instanceof PsiDirectory ||
+//                        psi instanceof PsiPackage ||
+//                        file instanceof PsiJavaFile ||
+//                        (vfile != null && vfile.getName().endsWith(".java"));
+//
+//        e.getPresentation().setEnabledAndVisible(enable);
+//    }
 
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
