@@ -14,7 +14,7 @@ import org.jetbrains.annotations.Nullable;
 
 public final class TestGenerationWorker {
 
-    private static final int    MAX_ITERATIONS = 5;
+    private static final int    MAX_ITERATIONS = 1;
     private static final double TARGET_RATIO   = 0.90;   // 90 %
 
     public static void process(Project project, PsiClass cut, @NotNull ProgressIndicator ind, PsiDirectory testRoot) {
@@ -74,7 +74,7 @@ public final class TestGenerationWorker {
 
     private static void executeAIActionForAttempt(Project project, ContextModel ctx, Ref<PsiFile> testFile, PsiDirectory packageDir, String promptTemplate, String testFileName) {
         String prompt     = PromptBuilder.build(promptTemplate, ctx);
-        String testSource = JAIPilotLLM.invokeAI(prompt);
+        String testSource = JAIPilotLLM.invokeAIGemini(prompt);
         write(project, testFile, testSource, packageDir, testFileName);
     }
 
