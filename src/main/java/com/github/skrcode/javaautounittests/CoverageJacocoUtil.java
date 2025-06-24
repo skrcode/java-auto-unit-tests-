@@ -7,6 +7,7 @@ import com.intellij.execution.junit.JUnitConfigurationType;
 import com.intellij.execution.process.ProcessAdapter;
 import com.intellij.execution.process.ProcessEvent;
 import com.intellij.execution.process.ProcessHandler;
+import com.intellij.execution.process.ProcessOutputType;
 import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.execution.runners.ExecutionEnvironmentBuilder;
 import com.intellij.execution.runners.ExecutionUtil;
@@ -17,6 +18,7 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.compiler.CompilerManager;
 import com.intellij.openapi.compiler.CompilerMessage;
 import com.intellij.openapi.compiler.CompilerMessageCategory;
+import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.module.ModuleUtilCore;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
@@ -24,7 +26,9 @@ import com.intellij.openapi.startup.StartupManager;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiClass;
+import com.intellij.psi.PsiDocumentManager;
 import com.intellij.util.Consumer;
+import com.intellij.util.messages.MessageBusConnection;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -34,6 +38,7 @@ import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Pattern;
 
 /**
  * Compiles a JUnit test class, runs it with coverage, and returns:
@@ -47,91 +52,87 @@ public class CoverageJacocoUtil {
 
     public static @NotNull String executeJUnitClass(Project project, PsiClass testClass) {
 
-        // 1. Create run config
-        ConfigurationFactory factory = JUnitConfigurationType.getInstance().getConfigurationFactories()[0];
-        RunnerAndConfigurationSettings settings = RunManager.getInstance(project).createConfiguration(testClass.getName(), factory);
-        JUnitConfiguration config = (JUnitConfiguration) settings.getConfiguration();
-        config.setModule(ModuleUtilCore.findModuleForPsiElement(testClass));
-        config.setMainClass(testClass);
+        // ── shared state (safe to create off-EDT) ────────────────────────────────
+        StringBuilder  failures = new StringBuilder();
+        CountDownLatch done     = new CountDownLatch(1);
+        Pattern TEAMCITY_FAIL   = Pattern.compile("^##teamcity\\[testFailed");
 
-        // 2. Prepare execution environment with unique ID
-        long executionId = System.nanoTime(); // practically guaranteed unique
-        Executor executor = DefaultRunExecutor.getRunExecutorInstance();
-        ProgramRunner<?> runner = ProgramRunner.getRunner(executor.getId(), config);
-        if (runner == null) return "ERROR: No ProgramRunner found for config";
+        ApplicationManager.getApplication().invokeAndWait(() -> {
 
-        ExecutionEnvironment env;
-        try {
-            env = ExecutionEnvironmentBuilder.create(project, executor, config)
-                    .runnerAndSettings(runner, settings)
-                    .build();
-            env.setExecutionId(executionId); // ✅ Set unique execution ID
-        } catch (ExecutionException e) {
-            return "ERROR: Failed to build execution environment — " + e.getMessage();
-        }
+            // 1 ── flush unsaved edits *on the EDT*
+            PsiDocumentManager.getInstance(project).commitAllDocuments();
+            FileDocumentManager.getInstance().saveAllDocuments();
 
-        // 3. Start the test
-        ProgramRunnerUtil.executeConfiguration(env, false, false);
+            // 2 ── build a transient JUnit run-config
+            ConfigurationFactory factory =
+                    JUnitConfigurationType.getInstance().getConfigurationFactories()[0];
 
-        // 4. Wait for matching handler using execution ID
-        AtomicReference<ProcessHandler> handlerRef = new AtomicReference<>();
-        CountDownLatch handlerReady = new CountDownLatch(1);
-        ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            long deadline = System.currentTimeMillis() + 30_000;
-            while (System.currentTimeMillis() < deadline && handlerRef.get() == null) {
-                for (RunContentDescriptor d : ExecutionManager.getInstance(project).getContentManager().getAllDescriptors()) {
-                    if (d.getExecutionId() != executionId) continue;
-                    ProcessHandler h = d.getProcessHandler();
-                    if (h != null) {
-                        handlerRef.set(h);
-                        handlerReady.countDown();
-                        return;
+            RunnerAndConfigurationSettings settings =
+                    RunManager.getInstance(project).createConfiguration(testClass.getName(), factory);
+
+            JUnitConfiguration cfg = (JUnitConfiguration) settings.getConfiguration();
+            cfg.setModule(ModuleUtilCore.findModuleForPsiElement(testClass));
+            cfg.setMainClass(testClass);
+
+            Executor executor = DefaultRunExecutor.getRunExecutorInstance();
+
+            // 3 ── hook a listener that fires when *this* run starts
+            MessageBusConnection conn = project.getMessageBus().connect();
+            conn.subscribe(ExecutionManager.EXECUTION_TOPIC, new ExecutionListener() {
+                @Override
+                public void processStarted(@NotNull String executorId,
+                                           @NotNull ExecutionEnvironment env,
+                                           @NotNull ProcessHandler handler) {
+                    if (env.getRunProfile() != cfg) return;   // not our run
+
+                    handler.addProcessListener(new ProcessAdapter() {
+                        @Override
+                        public void onTextAvailable(@NotNull ProcessEvent e, @NotNull Key outputType) {
+                            String txt = e.getText().trim();
+                            if (TEAMCITY_FAIL.matcher(txt).find()) {
+                                failures.append(txt.replace("|n", "\n")
+                                                .replace("|r", "\r"))
+                                        .append('\n');
+                            }
+                        }
+
+                        @Override
+                        public void processTerminated(@NotNull ProcessEvent e) {
+                            done.countDown();
+                            conn.disconnect();
+                        }
+                    });
+                }
+
+                @Override
+                public void processNotStarted(@NotNull String executorId,
+                                              @NotNull ExecutionEnvironment env) {
+                    if (env.getRunProfile() == cfg) {
+                        failures.append("ERROR: test JVM did not start\n");
+                        done.countDown();
+                        conn.disconnect();
                     }
                 }
-                try { Thread.sleep(100); } catch (InterruptedException ignored) {}
-            }
-            handlerReady.countDown(); // timeout path
+            });
+
+            // 4 ── launch (2-arg overload that exists in your SDK)
+            ExecutionUtil.runConfiguration(settings, executor);
         });
 
-        try {
-            if (!handlerReady.await(30, TimeUnit.SECONDS))
-                return "ERROR: handler not found (timeout)";
-        } catch (InterruptedException e) {
-            return "ERROR: interrupted waiting for handler";
-        }
-
-        ProcessHandler handler = handlerRef.get();
-        if (handler == null)
-            return "ERROR: handler null (run aborted)";
-
-        // 5. Capture output and wait for completion
-        StringBuilder console = new StringBuilder();
-        CountDownLatch done = new CountDownLatch(1);
-
-        handler.addProcessListener(new ProcessAdapter() {
-            @Override
-            public void onTextAvailable(@NotNull ProcessEvent event, @NotNull Key outputType) {
-                super.onTextAvailable(event, outputType);
-                console.append(event.getText());
-            }
-
-            @Override
-            public void processTerminated(@NotNull ProcessEvent event) {
-                done.countDown();
-            }
-        });
-
-        if (handler.isProcessTerminated()) done.countDown(); // skip wait if already terminated
-
+        // 5 ── wait ≤ 5 min for test JVM to exit
         try {
             if (!done.await(5, TimeUnit.MINUTES))
                 return "ERROR: test execution timed out";
-        } catch (InterruptedException e) {
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
             return "ERROR: interrupted while waiting for tests";
         }
 
-        return Objects.equals(handler.getExitCode(), 0) ? "" : console.toString();
+        return failures.length() == 0 ? "" : failures.toString();
     }
+
+
+
 
     public static String compileJUnitClass(Project project, PsiClass testClass) {
         CountDownLatch latch = new CountDownLatch(1);

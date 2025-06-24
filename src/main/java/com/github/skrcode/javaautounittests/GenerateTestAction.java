@@ -1,6 +1,7 @@
 package com.github.skrcode.javaautounittests;
 
 import com.github.skrcode.javaautounittests.settings.AISettings;
+import com.github.skrcode.javaautounittests.settings.AISettingsConfigurable;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
@@ -35,6 +36,10 @@ public class GenerateTestAction extends AnAction implements DumbAware {
         List<PsiClass> classes = collectClasses(context);
         if (classes.isEmpty()) {
             Messages.showErrorDialog(project, "No Java classes found in selection.", "JAIPilot");
+            return;
+        }
+        if (AISettings.getInstance().getModel().isEmpty()|| AISettings.getInstance().getTestDirectory().isEmpty() || AISettings.getInstance().getOpenAiKey().isEmpty()) {
+            Messages.showErrorDialog(project, "Please configure details in settings.", "JAIPilot");
             return;
         }
         BulkGeneratorService.enqueue(project, classes, stringPathToPsiDirectory(project,AISettings.getInstance().getTestDirectory()));
