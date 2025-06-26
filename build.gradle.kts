@@ -33,7 +33,7 @@ repositories {
 dependencies {
     testImplementation(libs.junit)
     implementation("com.openai:openai-java:2.2.0")
-    implementation("com.google.genai:google-genai:1.5.0")
+    implementation("com.google.genai:google-genai:1.6.0")
     compileOnly("org.jacoco:org.jacoco.core:0.8.12")
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
