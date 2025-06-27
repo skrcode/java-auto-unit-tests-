@@ -32,7 +32,7 @@ repositories {
 // Dependencies are managed with Gradle version catalog - read more: https://docs.gradle.org/current/userguide/platforms.html#sub:version-catalog
 dependencies {
     testImplementation(libs.junit)
-    implementation("com.openai:openai-java:2.2.0")
+    implementation("com.openai:openai-java:2.10.0")
     implementation("com.google.genai:google-genai:1.5.0")
     compileOnly("org.jacoco:org.jacoco.core:0.8.12")
 
