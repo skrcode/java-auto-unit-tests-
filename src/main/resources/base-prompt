@@ -29,8 +29,7 @@ Produce exactly one self-contained JUnit-Jupiter test class that drives ≥ 90% 
 
 ### ERROR FIXING INSTRUCTIONS (if erroroutput is present)
 If `erroroutput` is non-empty, it means the previously generated test class failed to compile. In this case:
-- **Fully replace the existing test class** in `testclass` with a corrected version.
-- Only modify or add tests necessary to fix compilation errors.
+- Only modify or add tests necessary to fix errors.
 - Use the provided `erroroutput` to identify all invalid method calls, missing imports, missing types, or mock misuses.
 - Fix all issues so the class compiles cleanly.
 - Use only method/field names from the actual CUT. Do not guess types or methods that do not exist.
@@ -38,6 +37,7 @@ If `erroroutput` is non-empty, it means the previously generated test class fail
 - Fully simulate compilation in your head before returning the code.
 
 ### INTERNAL REASONING STEPS (do NOT output)
+Important : If erroroutput is present, do not regenerate tests - only fix the tests which have errors.
 1. Parse the CUT to extract real public/protected methods and any guard clauses (`if (arg == null || …) throw …`).
 2. Derive invalid and edge-case inputs (null, empty, negative, boundary).
 3. Identify external collaborators (constructor args, fields); plan `Mockito.when()` and `verify()` usage accordingly.
@@ -56,5 +56,5 @@ If `erroroutput` is non-empty, it means the previously generated test class fail
 ### Existing test class - if present, fix and return the corrected full test class.
 {{testclass}}
 
-### Output error message - contains compiler error log if testclass failed to compile.
+### Output error message - contains compiler or execution error log if testclass failed to compile or execute.
 {{erroroutput}}
