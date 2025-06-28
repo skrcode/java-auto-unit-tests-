@@ -21,10 +21,16 @@ Produce exactly one self-contained JUnit-Jupiter test class that drives ≥ 90% 
 6. Parameterization: use `@ParameterizedTest` where it meaningfully reduces duplication.
 7. Coverage-Gate: if your mental simulation shows <90% coverage, **add additional tests** to meet the target before producing output.
 8. Output: emit only a single valid Java test class inside one code block — no commentary, no markdown, no explanation, no annotations, no XML.
+9. Important: If a test class already exists and you receive an erroroutput indicating compilation errors:
+   • Only fix the tests causing the compilation errors.
+   • Do not regenerate already-working tests.
+   • Keep all previously compiling tests intact.
+   • Do not guess methods or types not explicitly available in the provided CUT.
 
 ### ERROR FIXING INSTRUCTIONS (if erroroutput is present)
 If `erroroutput` is non-empty, it means the previously generated test class failed to compile. In this case:
 - **Fully replace the existing test class** in `testclass` with a corrected version.
+- Only modify or add tests necessary to fix compilation errors.
 - Use the provided `erroroutput` to identify all invalid method calls, missing imports, missing types, or mock misuses.
 - Fix all issues so the class compiles cleanly.
 - Use only method/field names from the actual CUT. Do not guess types or methods that do not exist.
