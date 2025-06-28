@@ -156,10 +156,10 @@ public class BuilderUtil {
         VirtualFile vFile;
         try {
             vFile = WriteAction.computeAndWait(() -> {
-                PsiFile psi = targetDir.findFile(className + ".java");   // returns PsiFile
+                PsiFile psi = targetDir.findFile(className);   // returns PsiFile
                 VirtualFile vf = psi != null ? psi.getVirtualFile()
                         : targetDir.getVirtualFile()
-                        .createChildData(project, className + ".java");
+                        .createChildData(project, className);
                 VfsUtil.saveText(vf, testClassCode);
                 return vf;
             });

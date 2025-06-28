@@ -79,13 +79,14 @@ public final class JAIPilotLLM {
         }
     }
 
-    public static String getSingleTest(String promptPlaceholder, String inputClass, ScenariosResponseOutput.TestScenario testScenario, String existingTestClass, String errorOutput) {
+    public static String getSingleTest(String promptPlaceholder, String testClassName, String inputClass, ScenariosResponseOutput.TestScenario testScenario, String existingTestClass, String errorOutput) {
         try {
             Map<String, String> placeholders = Map.of(
                     "{{inputclass}}", inputClass,
                     "{{testclass}}", existingTestClass,
                     "{{erroroutput}}", errorOutput,
-                    "{{testscenario}}", testScenario.toString()
+                    "{{testscenario}}", testScenario.toString(),
+                    "{{testclassname}}", testClassName
             );
 
             String prompt = promptPlaceholder;

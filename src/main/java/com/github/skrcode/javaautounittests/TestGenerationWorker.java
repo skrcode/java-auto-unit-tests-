@@ -34,13 +34,13 @@ public final class TestGenerationWorker {
         return runPipelineWithRetry(project, testFileName, testScenario,singleTestPromptPlaceholder,inputClass,existingTestClass,"", packageDir, 0);
     }
 
-    private static CompletableFuture<String>  runPipelineWithRetry(Project project, String testFileName, ScenariosResponseOutput.TestScenario testScenario, String singleTestPromptPlaceholder, String inputClass, String existingTestClass, String errorOutput, PsiDirectory packageDir, int attempt) {
-        final int MAX_ATTEMPTS = 1;
+    private static CompletableFuture<String> runPipelineWithRetry(Project project, String testFileName, ScenariosResponseOutput.TestScenario testScenario, String singleTestPromptPlaceholder, String inputClass, String existingTestClass, String errorOutput, PsiDirectory packageDir, int attempt) {
+        final int MAX_ATTEMPTS = 2;
 
         return CompletableFuture
-                .supplyAsync(() -> JAIPilotLLM.getSingleTest(singleTestPromptPlaceholder,inputClass,testScenario, existingTestClass, errorOutput), AppExecutorUtil.getAppExecutorService())
-//                .thenApplyAsync(testClassCode -> BuilderUtil.compileJUnitClass(project, testClassCode, testFileName, packageDir), AppExecutorUtil.getAppExecutorService())
-                .thenApplyAsync(compilationResult -> BuilderUtil.executeJUnitClass(project, compilationResult, errorOutput, testFileName, packageDir), AppExecutorUtil.getAppExecutorService())
+                .supplyAsync(() -> JAIPilotLLM.getSingleTest(singleTestPromptPlaceholder,testFileName,inputClass,testScenario, existingTestClass, errorOutput), AppExecutorUtil.getAppExecutorService())
+                .thenApplyAsync(testClassCode -> BuilderUtil.compileJUnitClass(project, testClassCode, testFileName, packageDir), AppExecutorUtil.getAppExecutorService())
+//                .thenApplyAsync(compilationResult -> BuilderUtil.executeJUnitClass(project, compilationResult, errorOutput, testFileName, packageDir), AppExecutorUtil.getAppExecutorService())
                 .thenCompose(executionResult -> {
                     if (executionResult.getSecond().isEmpty() || attempt >= MAX_ATTEMPTS) {
                         return CompletableFuture.completedFuture(executionResult.getFirst());
@@ -58,8 +58,8 @@ public final class TestGenerationWorker {
 
         return CompletableFuture
                 .supplyAsync(() -> JAIPilotLLM.getAggregatedTests(aggregateTestClassPromptPlaceholder,existingTestClass,individualTestClasses, errorOutput), AppExecutorUtil.getAppExecutorService())
-//                .thenApplyAsync(testClassCode -> BuilderUtil.compileJUnitClass(project, testClassCode, testFileName, packageDir), AppExecutorUtil.getAppExecutorService())
-                .thenApplyAsync(compilationResult -> BuilderUtil.executeJUnitClass(project, compilationResult, errorOutput, testFileName, packageDir), AppExecutorUtil.getAppExecutorService())
+                .thenApplyAsync(testClassCode -> BuilderUtil.compileJUnitClass(project, testClassCode, testFileName, packageDir), AppExecutorUtil.getAppExecutorService())
+//                .thenApplyAsync(compilationResult -> BuilderUtil.executeJUnitClass(project, compilationResult, errorOutput, testFileName, packageDir), AppExecutorUtil.getAppExecutorService())
                 .thenCompose(executionResult -> {
                     if (executionResult.getSecond().isEmpty() || attempt >= MAX_ATTEMPTS) {
                         return CompletableFuture.completedFuture(executionResult.getFirst());
@@ -86,9 +86,10 @@ public final class TestGenerationWorker {
         ScenariosResponseOutput scenarios = JAIPilotLLM.getScenarios(getScenariosPromptPlaceholder, cutClass);
 
         List<CompletableFuture<String>> futures = new ArrayList<>();
-//        for (ScenariosResponseOutput.TestScenario testScenario : scenarios.testScenarios) {
-            futures.add(runScenarioPipeline(project, cut.getName() + "Test"+"0.java", scenarios.testScenarios.get(0), getSingleTestPromptPlaceholder, cutClass, existingTestClass, packageDir));
-//        }
+        for (int index = 0;index < scenarios.testScenarios.size(); index++ ) {
+            ScenariosResponseOutput.TestScenario testScenario = scenarios.testScenarios.get(index);
+            futures.add(runScenarioPipeline(project, cut.getName() + "Test"+index+".java", testScenario, getSingleTestPromptPlaceholder, cutClass, existingTestClass, packageDir));
+        }
         try {
             List<String> additionalTestClasses = CompletableFuture
                     .allOf(futures.toArray(new CompletableFuture[0]))
@@ -97,8 +98,8 @@ public final class TestGenerationWorker {
                             .collect(Collectors.toList()))
                     .get(); // blocks until all are done
             CompletableFuture<String> finalTestClassSourceFuture = runAggregationPipeline(project, testFileName, additionalTestClasses, getAggregateTestClassPromptPlaceholder, existingTestClass, packageDir);
-            String testSource = finalTestClassSourceFuture.get();
-            write(project, testFile, testSource, packageDir, testFileName);
+//            String testSource = finalTestClassSourceFuture.get();
+//            write(project, testFile, testSource, packageDir, testFileName);
         } catch (Exception e) {
 
         }
