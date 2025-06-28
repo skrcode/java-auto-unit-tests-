@@ -56,5 +56,9 @@ If `erroroutput` is non-empty, it means the previously generated test class fail
 ### Existing test class - if present, fix and return the corrected full test class.
 {{testclass}}
 
-### Output error message - contains compiler error log if testclass failed to compile.
+### Error output
+The test class failed to compile or execute.
+• If it's a compilation error: fix only the test methods that contain invalid method/field references.
+• If it's an execution-time failure (e.g., mockito verification or assertion failure): fix only the affected test method so that it passes.
+Do not regenerate passing tests. Do not guess. Use exact method names and behavior from the input class.
 {{erroroutput}}
