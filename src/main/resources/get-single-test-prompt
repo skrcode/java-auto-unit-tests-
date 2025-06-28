@@ -26,7 +26,7 @@ You will receive:
    • For return values, use assertEquals, assertTrue, etc.
    • For void methods, use verify(mock, times(n)) …
 6. Include only necessary test setup and mocks to support the single test.
-7. Use a test class name of the form <CUTClassName>Test.
+7. Use a test class name of the form {{testclassname}}.
 8. Output: emit only a single valid Java test class inside one code block — no commentary, no markdown, no explanation, no annotations, no XML.
 
 ### ERROR FIXING INSTRUCTIONS (if erroroutput is present)

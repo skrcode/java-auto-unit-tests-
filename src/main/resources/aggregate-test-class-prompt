@@ -34,7 +34,7 @@ If `erroroutput` is non-empty, it means the previously generated test class fail
 ### Existing test class - if present, fix and return the corrected full test class.
 {{testclass}}
 
-### Existing test class - if present, fix and return the corrected full test class.
+### Test classes to be merged with the Existing test class
 {{additionaltestclasses}}
 
 ### Output error message - contains compiler error log if testclass failed to compile.
