@@ -10,11 +10,12 @@ import java.nio.file.Path;
 
 public class PromptBuilder {
 
-    public static String loadPromptFromUrl(String url) {
-        try (InputStream in = new URL(url).openStream()) {
+    public static String getPromptPlaceholder(String fileName) {
+        String promptUrl = "https://raw.githubusercontent.com/skrcode/java-auto-unit-tests/refs/heads/main/src/main/resources/"+fileName;
+        try (InputStream in = new URL(promptUrl).openStream()) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new RuntimeException("Failed to load prompt from: " + url, e);
+            throw new RuntimeException("Failed to load prompt from: " + promptUrl, e);
         }
     }
 

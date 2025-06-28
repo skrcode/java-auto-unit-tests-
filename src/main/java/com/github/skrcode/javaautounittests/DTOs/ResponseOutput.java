@@ -1,4 +1,4 @@
-package com.github.skrcode.javaautounittests;
+package com.github.skrcode.javaautounittests.DTOs;
 
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 

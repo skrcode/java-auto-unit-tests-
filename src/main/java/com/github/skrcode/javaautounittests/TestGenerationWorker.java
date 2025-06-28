@@ -1,5 +1,6 @@
 package com.github.skrcode.javaautounittests;
 
+import com.github.skrcode.javaautounittests.DTOs.ScenariosResponseOutput;
 import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.command.WriteCommandAction;
@@ -9,13 +10,63 @@ import com.intellij.openapi.util.Ref;
 import com.intellij.psi.*;
 import com.intellij.psi.codeStyle.CodeStyleManager;
 import com.intellij.psi.codeStyle.JavaCodeStyleManager;
+import com.intellij.util.concurrency.AppExecutorUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
+
+// open points
+// 1. virtually compiling and executing tests
+// 2. write all prompt - done
+// 3. Parallelly compiling and executing tests
+// 4. Parallelly calling prompts.
 public final class TestGenerationWorker {
 
     private static final int    MAX_ITERATIONS = 5;
-    private static final double TARGET_RATIO   = 0.90;   // 90 %
+    private static final double TARGET_RATIO   = 0.90;
+
+    private static CompletableFuture<String>  runScenarioPipeline(Project project, String testFileName, ScenariosResponseOutput.TestScenario testScenario, String singleTestPromptPlaceholder, String inputClass, String existingTestClass, PsiDirectory packageDir) {
+        return runPipelineWithRetry(project, testFileName, testScenario,singleTestPromptPlaceholder,inputClass,existingTestClass,"", packageDir, 0);
+    }
+
+    private static CompletableFuture<String>  runPipelineWithRetry(Project project, String testFileName, ScenariosResponseOutput.TestScenario testScenario, String singleTestPromptPlaceholder, String inputClass, String existingTestClass, String errorOutput, PsiDirectory packageDir, int attempt) {
+        final int MAX_ATTEMPTS = 1;
+
+        return CompletableFuture
+                .supplyAsync(() -> JAIPilotLLM.getSingleTest(singleTestPromptPlaceholder,inputClass,testScenario, existingTestClass, errorOutput), AppExecutorUtil.getAppExecutorService())
+//                .thenApplyAsync(testClassCode -> BuilderUtil.compileJUnitClass(project, testClassCode, testFileName, packageDir), AppExecutorUtil.getAppExecutorService())
+                .thenApplyAsync(compilationResult -> BuilderUtil.executeJUnitClass(project, compilationResult, errorOutput, testFileName, packageDir), AppExecutorUtil.getAppExecutorService())
+                .thenCompose(executionResult -> {
+                    if (executionResult.getSecond().isEmpty() || attempt >= MAX_ATTEMPTS) {
+                        return CompletableFuture.completedFuture(executionResult.getFirst());
+                    }
+                    return runPipelineWithRetry(project, testFileName, testScenario, singleTestPromptPlaceholder, inputClass,executionResult.getFirst(),executionResult.getSecond(),packageDir, attempt + 1);
+                });
+    }
+
+    private static CompletableFuture<String>  runAggregationPipeline(Project project, String testFileName, List<String> individualTestClasses, String aggregateTestClassPromptPlaceholder, String existingTestClass, PsiDirectory packageDir) {
+        return runAggregationWithRetry(project, testFileName, individualTestClasses,aggregateTestClassPromptPlaceholder,existingTestClass,packageDir, "", 0);
+    }
+
+    private static CompletableFuture<String>  runAggregationWithRetry(Project project, String testFileName, List<String> individualTestClasses, String aggregateTestClassPromptPlaceholder, String existingTestClass, PsiDirectory packageDir, String errorOutput, int attempt) {
+        final int MAX_ATTEMPTS = 5;
+
+        return CompletableFuture
+                .supplyAsync(() -> JAIPilotLLM.getAggregatedTests(aggregateTestClassPromptPlaceholder,existingTestClass,individualTestClasses, errorOutput), AppExecutorUtil.getAppExecutorService())
+//                .thenApplyAsync(testClassCode -> BuilderUtil.compileJUnitClass(project, testClassCode, testFileName, packageDir), AppExecutorUtil.getAppExecutorService())
+                .thenApplyAsync(compilationResult -> BuilderUtil.executeJUnitClass(project, compilationResult, errorOutput, testFileName, packageDir), AppExecutorUtil.getAppExecutorService())
+                .thenCompose(executionResult -> {
+                    if (executionResult.getSecond().isEmpty() || attempt >= MAX_ATTEMPTS) {
+                        return CompletableFuture.completedFuture(executionResult.getFirst());
+                    }
+                    return runAggregationWithRetry(project, testFileName, new ArrayList<>(), aggregateTestClassPromptPlaceholder,executionResult.getFirst(),packageDir,executionResult.getSecond(), attempt + 1);
+                });
+    }
 
     public static void process(Project project, PsiClass cut, @NotNull ProgressIndicator ind, PsiDirectory testRoot) {
 
@@ -25,58 +76,41 @@ public final class TestGenerationWorker {
             return;
         }
 
-        String testFileName   = cut.getName() + "Test.java";
-        String promptUrl      = "https://raw.githubusercontent.com/skrcode/java-auto-unit-tests/refs/heads/main/src/main/resources/base-prompt";
-        String promptTemplate = PromptBuilder.loadPromptFromUrl(promptUrl);
+        String testFileName = cut.getName() + "Test.java";
+        Ref<PsiFile> testFile = Ref.create(packageDir.findFile(testFileName));
+        String existingTestClass = testFile.get() == null ? "" : testFile.get().getText();
+        String cutClass = cut.getContainingFile().getText();
+        String getScenariosPromptPlaceholder = PromptBuilder.getPromptPlaceholder("get-scenarios-prompt");
+        String getSingleTestPromptPlaceholder = PromptBuilder.getPromptPlaceholder("get-single-test-prompt");
+        String getAggregateTestClassPromptPlaceholder = PromptBuilder.getPromptPlaceholder("aggregate-test-class-prompt");
+        ScenariosResponseOutput scenarios = JAIPilotLLM.getScenarios(getScenariosPromptPlaceholder, cutClass);
 
-        for(int compileAttempt = 0, executeAttempt = 0;
-            compileAttempt < MAX_ITERATIONS && executeAttempt < MAX_ITERATIONS && !ind.isCanceled(); ) {
+        List<CompletableFuture<String>> futures = new ArrayList<>();
+//        for (ScenariosResponseOutput.TestScenario testScenario : scenarios.testScenarios) {
+            futures.add(runScenarioPipeline(project, cut.getName() + "Test"+"0.java", scenarios.testScenarios.get(0), getSingleTestPromptPlaceholder, cutClass, existingTestClass, packageDir));
+//        }
+        try {
+            List<String> additionalTestClasses = CompletableFuture
+                    .allOf(futures.toArray(new CompletableFuture[0]))
+                    .thenApply(v -> futures.stream()
+                            .map(CompletableFuture::join)
+                            .collect(Collectors.toList()))
+                    .get(); // blocks until all are done
+            CompletableFuture<String> finalTestClassSourceFuture = runAggregationPipeline(project, testFileName, additionalTestClasses, getAggregateTestClassPromptPlaceholder, existingTestClass, packageDir);
+            String testSource = finalTestClassSourceFuture.get();
+            write(project, testFile, testSource, packageDir, testFileName);
+        } catch (Exception e) {
 
-            int totalAttempts = compileAttempt + executeAttempt + 1;
-            ind.setText2("Iteration " + totalAttempts);
-            Ref<PsiFile> testFile = Ref.create(packageDir.findFile(testFileName));
-            ContextModel ctx = ReadAction.compute(() -> ContextExtractor.buildContext(cut));
-            ctx.existingTestSource = testFile.get() == null ? null : testFile.get().getText();
-
-            if(testFile.get() == null) {
-                executeAIActionForAttempt(project, ctx, testFile, packageDir, promptTemplate, testFileName);
-                compileAttempt++;
-                continue;
-            }
-
-            PsiClass psiClass = getClassForExecution(testFile);
-
-            String compileMsg = CoverageJacocoUtil.compileJUnitClass(project, psiClass);
-            if (!compileMsg.isEmpty()) {
-                ctx.errorMessage = compileMsg;
-                executeAIActionForAttempt(project, ctx, testFile, packageDir, promptTemplate, testFileName);
-                compileAttempt++;
-                continue;
-            }
-
-            String executeMsg = CoverageJacocoUtil.executeJUnitClass(project, psiClass);
-            if(!executeMsg.isEmpty()){
-                ctx.errorMessage = executeMsg;
-                executeAIActionForAttempt(project, ctx, testFile, packageDir, promptTemplate, testFileName);
-                executeAttempt++;
-                continue;
-            }
-            break;
-//
-//      outputCoverage = coverage(testclass)
-//      if(outputCoverage < 90%)
-//          testClass = genAI(baseclass,testclass,"",outputCoverage)
-//          iterations = iterations + 1
-//          write(testClass)
-//	        continue
         }
+
+
     }
 
-    private static void executeAIActionForAttempt(Project project, ContextModel ctx, Ref<PsiFile> testFile, PsiDirectory packageDir, String promptTemplate, String testFileName) {
-        String prompt     = PromptBuilder.build(promptTemplate, ctx);
-        String testSource = JAIPilotLLM.invokeAIGemini(prompt);
-        write(project, testFile, testSource, packageDir, testFileName);
-    }
+//    private static void executeAIActionForAttempt(Project project, ContextModel ctx, Ref<PsiFile> testFile, PsiDirectory packageDir, String promptTemplate, String testFileName) {
+//        String prompt     = PromptBuilder.build(promptTemplate, ctx);
+//        String testSource = JAIPilotLLM.invokeAIGemini(prompt);
+//        write(project, testFile, testSource, packageDir, testFileName);
+//    }
 
     private static void write(Project project, Ref<PsiFile> testFile, String testSource, PsiDirectory packageDir, String testFileName) {
         WriteCommandAction.runWriteCommandAction(project, () -> {
