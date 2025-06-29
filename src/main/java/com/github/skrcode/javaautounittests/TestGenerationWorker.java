@@ -13,7 +13,7 @@ import java.util.List;
 
 public final class TestGenerationWorker {
 
-    private static final int MAX_ATTEMPTS= 5, MAX_TESTS = 5;
+    private static final int MAX_ATTEMPTS= 5;// MAX_TESTS = 5;
 
     private static String runScenarioPipeline(ProgressIndicator indicator, Project project, String testFileName, ScenariosResponseOutput.TestScenario testScenario, String singleTestPromptPlaceholder, String inputClass, PsiDirectory packageDir) {
         return runPipelineWithRetry(indicator, project, testFileName, testScenario,singleTestPromptPlaceholder,inputClass, packageDir, 0);
@@ -84,6 +84,7 @@ public final class TestGenerationWorker {
 
         List<String> individualTestCases = new ArrayList<>();
 
+        int MAX_TESTS = scenarios.testScenarios.size();
         for (int index = 1;index <= MAX_TESTS; index++ ) {
             String individualTestFileName = cut.getName() + "TmpTest"+index+".java";
             BuilderUtil.deleteFile(project, individualTestFileName, packageDir);
