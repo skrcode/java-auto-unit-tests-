@@ -194,6 +194,33 @@ public class BuilderUtil {
         });
     }
 
+    public static void deleteFile(Project project, PsiFile fileToDelete) {
+        if (fileToDelete == null) return;
+
+        WriteCommandAction.runWriteCommandAction(project, () -> {
+            try {
+                fileToDelete.delete();
+            } catch (Exception e) {
+                // Optionally log or show notification
+                e.printStackTrace();
+            }
+        });
+    }
+
+    public static void deleteFile(Project project, String fileNameToDelete, PsiDirectory packageDir) {
+        Ref<PsiFile> fileToDelete = Ref.create(packageDir.findFile(fileNameToDelete));
+        if (fileToDelete.get() == null) return;
+
+        WriteCommandAction.runWriteCommandAction(project, () -> {
+            try {
+                fileToDelete.get().delete();
+            } catch (Exception e) {
+                // Optionally log or show notification
+                e.printStackTrace();
+            }
+        });
+    }
+
 
     private static PsiFile createAndAddFile(Project project,
                                             PsiDirectory dir,

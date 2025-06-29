@@ -27,5 +27,12 @@ public class ScenariosResponseOutput {
                     ", scenario='" + scenario + '\'' +
                     '}';
         }
+
+        public String toOneLiner() {
+            return "TestScenario{" +
+                    "methodname='" + methodname + '\'' +
+                    ", returntype='" + returntype + '\'' +
+                    '}';
+        }
     }
 }
