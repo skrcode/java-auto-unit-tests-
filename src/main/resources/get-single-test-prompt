@@ -28,6 +28,7 @@ You will receive:
 6. Include only necessary test setup and mocks to support the single test.
 7. Use a test class name of the form {{testclassname}}.
 8. Output: emit only a single valid Java test class inside one code block — no commentary, no markdown, no explanation, no annotations, no XML.
+9. Include the package at the top of the class as well
 
 ### ERROR FIXING INSTRUCTIONS (if erroroutput is present)
 If `erroroutput` is non-empty, it means the previously generated test class failed to compile. In this case:
