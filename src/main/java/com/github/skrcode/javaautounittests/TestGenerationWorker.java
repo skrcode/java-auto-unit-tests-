@@ -86,17 +86,21 @@ public final class TestGenerationWorker {
         ScenariosResponseOutput scenarios = JAIPilotLLM.getScenarios(getScenariosPromptPlaceholder, cutClass);
 
         List<CompletableFuture<String>> futures = new ArrayList<>();
+        List<String> additionalTestClasses = new ArrayList<>();
         for (int index = 0;index < 5; index++ ) {
             ScenariosResponseOutput.TestScenario testScenario = scenarios.testScenarios.get(index);
-            futures.add(runScenarioPipeline(project, cut.getName() + "Test"+index+".java", testScenario, getSingleTestPromptPlaceholder, cutClass, existingTestClass, packageDir));
+            try {
+                additionalTestClasses.add(runScenarioPipeline(project, cut.getName() + "Test"+index+".java", testScenario, getSingleTestPromptPlaceholder, cutClass, existingTestClass, packageDir).get());
+            } catch (Exception e) {
+            }
         }
         try {
-            List<String> additionalTestClasses = CompletableFuture
-                    .allOf(futures.toArray(new CompletableFuture[0]))
-                    .thenApply(v -> futures.stream()
-                            .map(CompletableFuture::join)
-                            .collect(Collectors.toList()))
-                    .get(); // blocks until all are done
+//            List<String> additionalTestClasses = CompletableFuture
+//                    .allOf(futures.toArray(new CompletableFuture[0]))
+//                    .thenApply(v -> futures.stream()
+//                            .map(CompletableFuture::join)
+//                            .collect(Collectors.toList()))
+//                    .get(); // blocks until all are done
             CompletableFuture<String> finalTestClassSourceFuture = runAggregationPipeline(project, testFileName, additionalTestClasses, getAggregateTestClassPromptPlaceholder, existingTestClass, packageDir);
             String finalTestClassSource = finalTestClassSourceFuture.get();
 //            String testSource = finalTestClassSourceFuture.get();

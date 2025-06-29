@@ -219,6 +219,7 @@ public class BuilderUtil {
             return Pair.create(VfsUtilCore.loadText(vFile), err.toString().trim());
         } catch (IOException e) {
             err.append("ERROR");
+            return Pair.create(testClassCode, err.toString().trim());
         }
     }
 
