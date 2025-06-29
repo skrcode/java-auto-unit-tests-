@@ -26,6 +26,8 @@ import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
+import com.intellij.psi.codeStyle.CodeStyleManager;
+import com.intellij.psi.codeStyle.JavaCodeStyleManager;
 import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.util.messages.MessageBusConnection;
 import org.jetbrains.annotations.NotNull;
@@ -161,11 +163,20 @@ public class BuilderUtil {
                         : targetDir.getVirtualFile()
                         .createChildData(project, className);
                 VfsUtil.saveText(vf, testClassCode);
+
+                // ── Reformat and optimize imports ──
+                PsiJavaFile psiFile = (PsiJavaFile) PsiManager.getInstance(project).findFile(vf);
+                if (psiFile != null) {
+                    JavaCodeStyleManager.getInstance(project).optimizeImports(psiFile);
+                    CodeStyleManager.getInstance(project).reformat(psiFile);
+                }
+
                 return vf;
             });
         } catch (IOException ioe) {
             return Pair.create(testClassCode, "ERROR: cannot write file – " + ioe.getMessage());
         }
+
 
         // ── 2 – flush documents so compiler sees fresh text ──────────────────────
         ApplicationManager.getApplication().invokeAndWait(() -> {
