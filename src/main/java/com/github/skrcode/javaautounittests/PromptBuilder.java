@@ -11,7 +11,7 @@ import java.nio.file.Path;
 public class PromptBuilder {
 
     public static String getPromptPlaceholder(String fileName) {
-        String promptUrl = "https://raw.githubusercontent.com/skrcode/java-auto-unit-tests/refs/heads/main/src/main/resources/"+fileName;
+        String promptUrl = "https://raw.githubusercontent.com/skrcode/java-auto-unit-tests/refs/heads/feature/scenarios/src/main/resources/"+fileName;
         try (InputStream in = new URL(promptUrl).openStream()) {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {

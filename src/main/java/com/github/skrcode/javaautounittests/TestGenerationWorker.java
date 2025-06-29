@@ -86,7 +86,7 @@ public final class TestGenerationWorker {
         ScenariosResponseOutput scenarios = JAIPilotLLM.getScenarios(getScenariosPromptPlaceholder, cutClass);
 
         List<CompletableFuture<String>> futures = new ArrayList<>();
-        for (int index = 0;index < scenarios.testScenarios.size(); index++ ) {
+        for (int index = 0;index < 5; index++ ) {
             ScenariosResponseOutput.TestScenario testScenario = scenarios.testScenarios.get(index);
             futures.add(runScenarioPipeline(project, cut.getName() + "Test"+index+".java", testScenario, getSingleTestPromptPlaceholder, cutClass, existingTestClass, packageDir));
         }
