@@ -31,11 +31,11 @@ public final class TestGenerationWorker {
     private static final double TARGET_RATIO   = 0.90;
 
     private static CompletableFuture<String>  runScenarioPipeline(Project project, String testFileName, ScenariosResponseOutput.TestScenario testScenario, String singleTestPromptPlaceholder, String inputClass, String existingTestClass, PsiDirectory packageDir) {
-        return runPipelineWithRetry(project, testFileName, testScenario,singleTestPromptPlaceholder,inputClass,existingTestClass,"", packageDir, 0);
+        return runPipelineWithRetry(project, testFileName, testScenario,singleTestPromptPlaceholder,inputClass,"","", packageDir, 0);
     }
 
     private static CompletableFuture<String> runPipelineWithRetry(Project project, String testFileName, ScenariosResponseOutput.TestScenario testScenario, String singleTestPromptPlaceholder, String inputClass, String existingTestClass, String errorOutput, PsiDirectory packageDir, int attempt) {
-        final int MAX_ATTEMPTS = 2;
+        final int MAX_ATTEMPTS = 5;
 
         return CompletableFuture
                 .supplyAsync(() -> JAIPilotLLM.getSingleTest(singleTestPromptPlaceholder,testFileName,inputClass,testScenario, existingTestClass, errorOutput), AppExecutorUtil.getAppExecutorService())

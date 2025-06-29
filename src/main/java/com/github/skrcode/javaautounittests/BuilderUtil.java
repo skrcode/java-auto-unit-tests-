@@ -24,6 +24,7 @@ import com.intellij.openapi.roots.ContentFolder;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.vfs.VfsUtil;
+import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
 import com.intellij.psi.codeStyle.CodeStyleManager;
@@ -170,7 +171,6 @@ public class BuilderUtil {
                     JavaCodeStyleManager.getInstance(project).optimizeImports(psiFile);
                     CodeStyleManager.getInstance(project).reformat(psiFile);
                 }
-
                 return vf;
             });
         } catch (IOException ioe) {
@@ -215,7 +215,11 @@ public class BuilderUtil {
             err.append("COMPILATION_INTERRUPTED");
         }
 
-        return Pair.create(testClassCode, err.toString().trim());
+        try {
+            return Pair.create(VfsUtilCore.loadText(vFile), err.toString().trim());
+        } catch (IOException e) {
+            err.append("ERROR");
+        }
     }
 
 
