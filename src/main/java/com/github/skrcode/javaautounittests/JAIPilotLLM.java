@@ -93,7 +93,6 @@ public final class JAIPilotLLM {
             for (Map.Entry<String, String> entry : placeholders.entrySet()) {
                 prompt = prompt.replace(entry.getKey(), entry.getValue());
             }
-
             Schema schema = Schema.builder().type(Type.Known.OBJECT).properties(ImmutableMap.of("outputTestClass", Schema.builder().type(Type.Known.STRING).description("Output Test Class").build())).build();
             GenerateContentResponse parsed = invokeGemini(prompt, schema);
             ObjectMapper mapper = new ObjectMapper();

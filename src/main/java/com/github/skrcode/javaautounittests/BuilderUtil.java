@@ -12,17 +12,21 @@ import com.intellij.execution.runners.ExecutionUtil;
 import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.WriteAction;
+import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.compiler.CompileScope;
 import com.intellij.openapi.compiler.CompilerManager;
 import com.intellij.openapi.compiler.CompilerMessage;
 import com.intellij.openapi.compiler.CompilerMessageCategory;
+import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtilCore;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ContentFolder;
+import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.Pair;
+import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -39,6 +43,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
 /**
@@ -147,81 +152,155 @@ public class BuilderUtil {
     }
 
 
-    public static Pair<String, String> compileJUnitClass(Project      project,
+    public static Pair<String,String> compileJUnitClass(Project      project,
                                                          String       testClassCode,
-                                                         String       className,
-                                                         PsiDirectory targetDir) {
-        if (targetDir == null) {
-            return Pair.create(testClassCode, "ERROR: targetDir is null");
-        }
-
-        // ── 1 – create / overwrite <className>.java ──────────────────────────────
-        VirtualFile vFile;
-        try {
-            vFile = WriteAction.computeAndWait(() -> {
-                PsiFile psi = targetDir.findFile(className);   // returns PsiFile
-                VirtualFile vf = psi != null ? psi.getVirtualFile()
-                        : targetDir.getVirtualFile()
-                        .createChildData(project, className);
-                VfsUtil.saveText(vf, testClassCode);
-
-                // ── Reformat and optimize imports ──
-                PsiJavaFile psiFile = (PsiJavaFile) PsiManager.getInstance(project).findFile(vf);
-                if (psiFile != null) {
-                    JavaCodeStyleManager.getInstance(project).optimizeImports(psiFile);
-                    CodeStyleManager.getInstance(project).reformat(psiFile);
-                }
-                return vf;
-            });
-        } catch (IOException ioe) {
-            return Pair.create(testClassCode, "ERROR: cannot write file – " + ioe.getMessage());
-        }
-
-
-        // ── 2 – flush documents so compiler sees fresh text ──────────────────────
-        ApplicationManager.getApplication().invokeAndWait(() -> {
-            PsiDocumentManager.getInstance(project).commitAllDocuments();
-            FileDocumentManager.getInstance().saveAllDocuments();
-        });
-
-        // ── 3 – compile only that file ───────────────────────────────────────────
-        StringBuilder err = new StringBuilder();
+                                                         String       fileName,      // e.g. "MyTest.java"
+                                                         PsiDirectory targetDir)  {
+        Ref<PsiFile> testFile = Ref.create(targetDir.findFile(fileName));
+        write(project,testFile,testClassCode,targetDir,fileName);
         CountDownLatch latch = new CountDownLatch(1);
+        StringBuilder result = new StringBuilder();
+        VirtualFile file = testFile.get().getVirtualFile();
 
-        CompileScope scope = CompilerManager.getInstance(project)
-                .createFilesCompileScope(new VirtualFile[]{vFile});
-
-        ApplicationManager.getApplication().invokeLater(() ->
-                CompilerManager.getInstance(project).compile(scope,
-                        (aborted, errors, warnings, ctx) -> {
-                            if (aborted) {
-                                err.append("COMPILATION_ABORTED");
-                            } else if (errors > 0) {
-                                err.append("COMPILATION_FAILED\n");
-                                for (CompilerMessage m :
-                                        ctx.getMessages(CompilerMessageCategory.ERROR)) {
-                                    err.append(m.getMessage()).append('\n');
-                                }
-                            }
-                            latch.countDown();
-                        }));
+        ApplicationManager.getApplication().invokeAndWait(() -> {
+            CompilerManager.getInstance(project).compile(new VirtualFile[]{file}, (aborted, errors, warnings, context) -> {
+                if (aborted) {
+                    result.append("COMPILATION_ABORTED");
+                } else if (errors > 0) {
+                    result.append("COMPILATION_FAILED\n");
+                    for (CompilerMessage msg : context.getMessages(CompilerMessageCategory.ERROR)) {
+                        result.append(msg.getMessage()).append('\n');
+                    }
+                }
+                latch.countDown();
+            });
+        });
 
         try {
             if (!latch.await(60, TimeUnit.SECONDS)) {
-                err.append("COMPILATION_TIMEOUT");
+                result.append("COMPILATION_TIMEOUT");
             }
-        } catch (InterruptedException ie) {
+        } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            err.append("COMPILATION_INTERRUPTED");
+            result.append("COMPILATION_INTERRUPTED");
         }
 
-        try {
-            return Pair.create(VfsUtilCore.loadText(vFile), err.toString().trim());
-        } catch (IOException e) {
-            err.append("ERROR");
-            return Pair.create(testClassCode, err.toString().trim());
-        }
+        return Pair.create(testClassCode, result.toString().trim());
     }
+
+
+//    public static Pair<String, String> compileJUnitClass(Project      project,
+//                                                         String       testClassCode,
+//                                                         String       fileName,      // e.g. "MyTest.java"
+//                                                         PsiDirectory targetDir) {
+//        if (targetDir == null)
+//            return Pair.create(testClassCode, "ERROR: targetDir is null");
+//
+//        /* ── 0 – must run off the EDT ─────────────────────────────────────────── */
+//        if (ApplicationManager.getApplication().isDispatchThread())
+//            throw new IllegalStateException("compileJUnitClass must be called off the EDT");
+//
+//        /* ── 1 – create / overwrite the PsiFile inside a write-action ─────────── */
+//        AtomicReference<PsiFile> fileRef = new AtomicReference<>();
+//        String writeError = ApplicationManager.getApplication().runWriteAction((Computable<String>) () -> {
+//            try {
+//                PsiFile psi = targetDir.findFile(fileName);
+//                if (psi == null) {
+//                    psi = PsiFileFactory.getInstance(project)
+//                            .createFileFromText(fileName, JavaFileType.INSTANCE, testClassCode);
+//                    targetDir.add(psi);
+//                } else {
+//                    Document doc = PsiDocumentManager.getInstance(project).getDocument(psi);
+//                    if (doc != null) doc.setText(testClassCode);
+//                }
+//                JavaCodeStyleManager.getInstance(project).optimizeImports(psi);
+//                CodeStyleManager.getInstance(project).reformat(psi);
+//                fileRef.set(psi);
+//                return null;          // success
+//            } catch (Exception ex) {
+//                return "ERROR: cannot write file – " + ex.getMessage();
+//            }
+//        });
+//        if (writeError != null)
+//            return Pair.create(testClassCode, writeError);
+//
+//        /* ── 2 – commit / save so the compiler sees fresh text ────────────────── */
+//        ApplicationManager.getApplication().invokeAndWait(() -> {
+//            PsiDocumentManager.getInstance(project).commitAllDocuments();
+//            FileDocumentManager.getInstance().saveAllDocuments();
+//        });
+//
+//        /* ── 3 – wait for any current build to finish ─────────────────────────── */
+//        CompilerManager cm = CompilerManager.getInstance(project);
+//        while (cm.isCompilationActive()) {
+//            try { Thread.sleep(100); } catch (InterruptedException ie) {
+//                Thread.currentThread().interrupt();
+//                return Pair.create(testClassCode, "COMPILATION_INTERRUPTED");
+//            }
+//        }
+//
+//        /* ── 4 – compile just this file and block until done ──────────────────── */
+//        StringBuilder err = new StringBuilder();
+//        CountDownLatch latch = new CountDownLatch(1);
+//
+//        CompileScope scope = cm.createFilesCompileScope(new PsiFile[]{fileRef.get()});
+//        cm.compile(scope, (aborted, errors, warnings, ctx) -> {
+//            if (aborted) {
+//                err.append("COMPILATION_ABORTED");
+//            } else if (errors > 0) {
+//                err.append("COMPILATION_FAILED\n");
+//                for (CompilerMessage m : ctx.getMessages(CompilerMessageCategory.ERROR))
+//                    err.append(m.getMessage()).append('\n');
+//            }
+//            latch.countDown();
+//        });
+//
+//        try {
+//            if (!latch.await(60, TimeUnit.SECONDS))
+//                err.append("COMPILATION_TIMEOUT");
+//        } catch (InterruptedException ie) {
+//            Thread.currentThread().interrupt();
+//            err.append("COMPILATION_INTERRUPTED");
+//        }
+//
+//        /* ── 5 – return the final (re-formatted) source + any errors ──────────── */
+//        return Pair.create(fileRef.get().getText(), err.toString().trim());
+//    }
+
+    private static void write(Project project, Ref<PsiFile> testFile, String testSource, PsiDirectory packageDir, String testFileName) {
+        WriteCommandAction.runWriteCommandAction(project, () -> {
+            PsiFile newPsi;
+
+            if (testFile.get() != null) {           // update existing
+                PsiDocumentManager docMgr = PsiDocumentManager.getInstance(project);
+                var doc = docMgr.getDocument(testFile.get());
+                if (doc != null) {
+                    doc.setText(testSource);
+                    docMgr.commitDocument(doc);
+                    newPsi = testFile.get();
+                } else {                            // fallback: replace file completely
+                    testFile.get().delete();
+                    newPsi = createAndAddFile(project, packageDir, testFileName, testSource);
+                }
+            } else {                                // create fresh file
+                newPsi = createAndAddFile(project, packageDir, testFileName, testSource);
+            }
+            JavaCodeStyleManager.getInstance(project).optimizeImports(newPsi);
+            CodeStyleManager.getInstance(project).reformat(newPsi);
+            testFile.set(newPsi);                   // 🔑 update the Ref to the NEW file
+        });
+    }
+
+
+    private static PsiFile createAndAddFile(Project project,
+                                            PsiDirectory dir,
+                                            String name,
+                                            String source) {
+        PsiFile file = PsiFileFactory.getInstance(project)
+                .createFileFromText(name, JavaFileType.INSTANCE, source);
+        return (PsiFile) dir.add(file);
+    }
+
 
 
 
