@@ -98,6 +98,7 @@ public final class TestGenerationWorker {
                             .collect(Collectors.toList()))
                     .get(); // blocks until all are done
             CompletableFuture<String> finalTestClassSourceFuture = runAggregationPipeline(project, testFileName, additionalTestClasses, getAggregateTestClassPromptPlaceholder, existingTestClass, packageDir);
+            String finalTestClassSource = finalTestClassSourceFuture.get();
 //            String testSource = finalTestClassSourceFuture.get();
 //            write(project, testFile, testSource, packageDir, testFileName);
         } catch (Exception e) {
