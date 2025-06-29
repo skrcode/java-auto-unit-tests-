@@ -56,108 +56,90 @@ public class BuilderUtil {
 
     private BuilderUtil() {}
 
-    public static @NotNull Pair<String, String> executeJUnitClass(Project project, String testClassCode, String errorOutputCompilation, String testClassName, PsiDirectory packageDir) {
-        if(!errorOutputCompilation.isEmpty()) {
-            return Pair.create(testClassCode, errorOutputCompilation);
-        }
-        StringBuilder failures = new StringBuilder();
-        CountDownLatch done = new CountDownLatch(1);
-        Pattern TEAMCITY_FAIL = Pattern.compile("^##teamcity\\[testFailed");
 
-        // 1. Create LightVirtualFile and PsiClass
-        LightVirtualFile file = new LightVirtualFile(testClassName + ".java", JavaFileType.INSTANCE, testClassCode);
-        PsiJavaFile psiFile = (PsiJavaFile) PsiManager.getInstance(project).findFile(file);
-        if (psiFile == null || psiFile.getClasses().length == 0) {
-            return Pair.create(testClassCode, "ERROR: Could not parse class");
-        }
-        PsiClass testClass = psiFile.getClasses()[0];
+    public static @NotNull String executeJUnitClass(Project project, PsiClass testClass) {
 
-        // 2. Flush documents on EDT
+        // ── shared state (safe to create off-EDT) ────────────────────────────────
+        StringBuilder  failures = new StringBuilder();
+        CountDownLatch done     = new CountDownLatch(1);
+        Pattern TEAMCITY_FAIL   = Pattern.compile("^##teamcity\\[testFailed");
+
         ApplicationManager.getApplication().invokeAndWait(() -> {
+
+            // 1 ── flush unsaved edits *on the EDT*
             PsiDocumentManager.getInstance(project).commitAllDocuments();
             FileDocumentManager.getInstance().saveAllDocuments();
-        });
 
-        // 3. Build transient JUnit config
-        RunManager runManager = RunManager.getInstance(project);
-        ConfigurationFactory factory = JUnitConfigurationType.getInstance().getConfigurationFactories()[0];
-        RunnerAndConfigurationSettings settings = runManager.createConfiguration(testClassName, factory);
+            // 2 ── build a transient JUnit run-config
+            ConfigurationFactory factory =
+                    JUnitConfigurationType.getInstance().getConfigurationFactories()[0];
 
-        // Mark it as temporary so the run config UI doesn't appear
-        settings.setTemporary(true);
-        runManager.setTemporaryConfiguration(settings);
+            RunnerAndConfigurationSettings settings =
+                    RunManager.getInstance(project).createConfiguration(testClass.getName(), factory);
 
-        JUnitConfiguration cfg = (JUnitConfiguration) settings.getConfiguration();
-        cfg.setMainClass(testClass);
+            JUnitConfiguration cfg = (JUnitConfiguration) settings.getConfiguration();
+            cfg.setModule(ModuleUtilCore.findModuleForPsiElement(testClass));
+            cfg.setMainClass(testClass);
 
-        // Resolve module from the test directory (safe fallback check)
-        @Nullable Module module = ModuleUtilCore.findModuleForPsiElement(packageDir);
-        if (module == null) {
-            throw new IllegalStateException("Cannot determine module for test directory: " + packageDir.getVirtualFile().getPath());
-        }
-        cfg.setModule(module);
+            Executor executor = DefaultRunExecutor.getRunExecutorInstance();
 
-        Executor executor = DefaultRunExecutor.getRunExecutorInstance();
+            // 3 ── hook a listener that fires when *this* run starts
+            MessageBusConnection conn = project.getMessageBus().connect();
+            conn.subscribe(ExecutionManager.EXECUTION_TOPIC, new ExecutionListener() {
+                @Override
+                public void processStarted(@NotNull String executorId,
+                                           @NotNull ExecutionEnvironment env,
+                                           @NotNull ProcessHandler handler) {
+                    if (env.getRunProfile() != cfg) return;   // not our run
 
-        // 4. Hook into execution
-        MessageBusConnection conn = project.getMessageBus().connect();
-        conn.subscribe(ExecutionManager.EXECUTION_TOPIC, new ExecutionListener() {
-            @Override
-            public void processStarted(@NotNull String executorId, @NotNull ExecutionEnvironment env, @NotNull ProcessHandler handler) {
-                if (env.getRunProfile() != cfg) return;
-
-                handler.addProcessListener(new ProcessAdapter() {
-                    @Override
-                    public void onTextAvailable(@NotNull ProcessEvent e, @NotNull Key outputType) {
-                        String txt = e.getText().trim();
-                        if (TEAMCITY_FAIL.matcher(txt).find()) {
-                            failures.append(txt.replace("|n", "\n").replace("|r", "\r")).append('\n');
+                    handler.addProcessListener(new ProcessAdapter() {
+                        @Override
+                        public void onTextAvailable(@NotNull ProcessEvent e, @NotNull Key outputType) {
+                            String txt = e.getText().trim();
+                            if (TEAMCITY_FAIL.matcher(txt).find()) {
+                                failures.append(txt.replace("|n", "\n")
+                                                .replace("|r", "\r"))
+                                        .append('\n');
+                            }
                         }
-                    }
 
-                    @Override
-                    public void processTerminated(@NotNull ProcessEvent e) {
+                        @Override
+                        public void processTerminated(@NotNull ProcessEvent e) {
+                            done.countDown();
+                            conn.disconnect();
+                        }
+                    });
+                }
+
+                @Override
+                public void processNotStarted(@NotNull String executorId,
+                                              @NotNull ExecutionEnvironment env) {
+                    if (env.getRunProfile() == cfg) {
+                        failures.append("ERROR: test JVM did not start\n");
                         done.countDown();
                         conn.disconnect();
                     }
-                });
-            }
-
-            @Override
-            public void processNotStarted(@NotNull String executorId, @NotNull ExecutionEnvironment env) {
-                if (env.getRunProfile() == cfg) {
-                    failures.append("ERROR: test JVM did not start\n");
-                    done.countDown();
-                    conn.disconnect();
                 }
-            }
+            });
+
+            // 4 ── launch (2-arg overload that exists in your SDK)
+            ExecutionUtil.runConfiguration(settings, executor);
         });
 
-        // 5. Launch the test
-        ApplicationManager.getApplication().invokeLater(() ->
-                ExecutionUtil.runConfiguration(settings, executor)
-        );
-
-        // 6. Wait for completion
+        // 5 ── wait ≤ 5 min for test JVM to exit
         try {
-            if (!done.await(5, TimeUnit.MINUTES)) {
-                return Pair.create(testClassCode,"ERROR: test execution timed out");
-            }
-        } catch (InterruptedException e) {
+            if (!done.await(5, TimeUnit.MINUTES))
+                return "ERROR: test execution timed out";
+        } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
-            return Pair.create(testClassCode,"ERROR: interrupted while waiting for tests");
+            return "ERROR: interrupted while waiting for tests";
         }
 
-        return Pair.create(testClassCode,failures.length() == 0 ? "" : failures.toString());
+        return failures.length() == 0 ? "" : failures.toString();
     }
 
+    public static String compileJUnitClass(Project project, Ref<PsiFile> testFile)  {
 
-    public static Pair<String,String> compileJUnitClass(Project      project,
-                                                         String       testClassCode,
-                                                         String       fileName,      // e.g. "MyTest.java"
-                                                         PsiDirectory targetDir)  {
-        Ref<PsiFile> testFile = Ref.create(targetDir.findFile(fileName));
-        write(project,testFile,testClassCode,targetDir,fileName);
         CountDownLatch latch = new CountDownLatch(1);
         StringBuilder result = new StringBuilder();
         VirtualFile file = testFile.get().getVirtualFile();
@@ -185,89 +167,10 @@ public class BuilderUtil {
             result.append("COMPILATION_INTERRUPTED");
         }
 
-        return Pair.create(testClassCode, result.toString().trim());
+        return result.toString().trim();
     }
 
-
-//    public static Pair<String, String> compileJUnitClass(Project      project,
-//                                                         String       testClassCode,
-//                                                         String       fileName,      // e.g. "MyTest.java"
-//                                                         PsiDirectory targetDir) {
-//        if (targetDir == null)
-//            return Pair.create(testClassCode, "ERROR: targetDir is null");
-//
-//        /* ── 0 – must run off the EDT ─────────────────────────────────────────── */
-//        if (ApplicationManager.getApplication().isDispatchThread())
-//            throw new IllegalStateException("compileJUnitClass must be called off the EDT");
-//
-//        /* ── 1 – create / overwrite the PsiFile inside a write-action ─────────── */
-//        AtomicReference<PsiFile> fileRef = new AtomicReference<>();
-//        String writeError = ApplicationManager.getApplication().runWriteAction((Computable<String>) () -> {
-//            try {
-//                PsiFile psi = targetDir.findFile(fileName);
-//                if (psi == null) {
-//                    psi = PsiFileFactory.getInstance(project)
-//                            .createFileFromText(fileName, JavaFileType.INSTANCE, testClassCode);
-//                    targetDir.add(psi);
-//                } else {
-//                    Document doc = PsiDocumentManager.getInstance(project).getDocument(psi);
-//                    if (doc != null) doc.setText(testClassCode);
-//                }
-//                JavaCodeStyleManager.getInstance(project).optimizeImports(psi);
-//                CodeStyleManager.getInstance(project).reformat(psi);
-//                fileRef.set(psi);
-//                return null;          // success
-//            } catch (Exception ex) {
-//                return "ERROR: cannot write file – " + ex.getMessage();
-//            }
-//        });
-//        if (writeError != null)
-//            return Pair.create(testClassCode, writeError);
-//
-//        /* ── 2 – commit / save so the compiler sees fresh text ────────────────── */
-//        ApplicationManager.getApplication().invokeAndWait(() -> {
-//            PsiDocumentManager.getInstance(project).commitAllDocuments();
-//            FileDocumentManager.getInstance().saveAllDocuments();
-//        });
-//
-//        /* ── 3 – wait for any current build to finish ─────────────────────────── */
-//        CompilerManager cm = CompilerManager.getInstance(project);
-//        while (cm.isCompilationActive()) {
-//            try { Thread.sleep(100); } catch (InterruptedException ie) {
-//                Thread.currentThread().interrupt();
-//                return Pair.create(testClassCode, "COMPILATION_INTERRUPTED");
-//            }
-//        }
-//
-//        /* ── 4 – compile just this file and block until done ──────────────────── */
-//        StringBuilder err = new StringBuilder();
-//        CountDownLatch latch = new CountDownLatch(1);
-//
-//        CompileScope scope = cm.createFilesCompileScope(new PsiFile[]{fileRef.get()});
-//        cm.compile(scope, (aborted, errors, warnings, ctx) -> {
-//            if (aborted) {
-//                err.append("COMPILATION_ABORTED");
-//            } else if (errors > 0) {
-//                err.append("COMPILATION_FAILED\n");
-//                for (CompilerMessage m : ctx.getMessages(CompilerMessageCategory.ERROR))
-//                    err.append(m.getMessage()).append('\n');
-//            }
-//            latch.countDown();
-//        });
-//
-//        try {
-//            if (!latch.await(60, TimeUnit.SECONDS))
-//                err.append("COMPILATION_TIMEOUT");
-//        } catch (InterruptedException ie) {
-//            Thread.currentThread().interrupt();
-//            err.append("COMPILATION_INTERRUPTED");
-//        }
-//
-//        /* ── 5 – return the final (re-formatted) source + any errors ──────────── */
-//        return Pair.create(fileRef.get().getText(), err.toString().trim());
-//    }
-
-    private static void write(Project project, Ref<PsiFile> testFile, String testSource, PsiDirectory packageDir, String testFileName) {
+    public static void write(Project project, Ref<PsiFile> testFile, String testSource, PsiDirectory packageDir, String testFileName) {
         WriteCommandAction.runWriteCommandAction(project, () -> {
             PsiFile newPsi;
 
