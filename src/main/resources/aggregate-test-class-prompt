@@ -19,6 +19,7 @@ You are given:
 2. Imports & Compilation:
    • Add all required imports (fully qualified or static).
    • Final output must compile. Resolve all errors from erroroutput.
+   • Include the package at the top of the class as well
 3. Parameterization:
    • Use @ParameterizedTest where it significantly reduces duplication.
 4. Output: emit only a single valid Java test class inside one code block — no commentary, no markdown, no explanation, no annotations, no XML.
