@@ -29,6 +29,8 @@ You will receive:
 7. Use test class name {{testclassname}}.
 8. Output: emit only a single valid Java test class inside one code block — no commentary, no markdown, no explanation, no annotations, no XML.
 9. Include the package at the top of the class as well
+10. Additionally, context classes are provided to generate better quality tests.
+
 
 ### ERROR FIXING INSTRUCTIONS (if erroroutput is present)
 If `erroroutput` is non-empty, it means the previously generated test class failed to compile. In this case:
@@ -58,6 +60,9 @@ If `erroroutput` is non-empty, it means the previously generated test class fail
 
 ### Existing test class - if present, fix and return the corrected full test class.
 {{testclass}}
+
+### Context classes to help generate tests
+{{contextclasses}}
 
 ### Output error message - contains compiler error log if testclass failed to compile.
 {{erroroutput}}
