@@ -18,6 +18,7 @@ import com.google.genai.Client;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -80,7 +81,7 @@ public final class JAIPilotLLM {
         }
     }
 
-    public static List<String> getAllSingleTest(String promptPlaceholder, List<String> testClassNames, String inputClass, List<ScenariosResponseOutput.TestScenario> testScenarios, List<String> existingTestClasses, List<String> errorOutputs) {
+    public static List<String> getAllSingleTest(Set<Integer> completedTests, String promptPlaceholder, List<String> testClassNames, String inputClass, List<ScenariosResponseOutput.TestScenario> testScenarios, List<String> existingTestClasses, List<String> errorOutputs) {
         ExecutorService executor = Executors.newCachedThreadPool();
         List<CompletableFuture<String>> futures = new ArrayList<>();
         Schema schema = Schema.builder().type(Type.Known.OBJECT).properties(ImmutableMap.of("outputTestClass", Schema.builder().type(Type.Known.STRING).description("Output Test Class").build())).build();
@@ -90,6 +91,10 @@ public final class JAIPilotLLM {
         ObjectMapper mapper = new ObjectMapper();
 
         for (int i = 0; i < testScenarios.size(); i++) {
+            if (completedTests.contains(i)) {
+                futures.add(CompletableFuture.completedFuture(""));
+                continue;
+            }
             int idx = i; // for lambda capture
 
             Map<String, String> placeholders = Map.of(
@@ -163,12 +168,13 @@ public final class JAIPilotLLM {
         }
     }
 
-    public static String getAggregatedTests(String promptPlaceholder, String existingTestClass, List<String> additionalTestClasses, String errorOutput) {
+    public static String getAggregatedTests(String promptPlaceholder, String existingTestClass, String testClassName, List<String> additionalTestClasses, String errorOutput) {
         try {
             Map<String, String> placeholders = Map.of(
                     "{{testclass}}", existingTestClass,
                     "{{erroroutput}}", errorOutput,
-                    "{{additionaltestclasses}}", additionalTestClasses.toString()
+                    "{{additionaltestclasses}}", additionalTestClasses.toString(),
+                    "{{testclassname}}", testClassName
             );
 
             String prompt = promptPlaceholder;

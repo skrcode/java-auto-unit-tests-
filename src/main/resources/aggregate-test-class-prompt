@@ -25,7 +25,7 @@ You are given:
 3. Parameterization:
    • Use @ParameterizedTest where it significantly reduces duplication.
 4. Output: emit only a single valid Java test class inside one code block — no commentary, no markdown, no explanation, no annotations, no XML.
-
+5. Use a test class name of the form {{testclassname}}.
 
 ### ERROR FIXING INSTRUCTIONS (if erroroutput is present)
 If `erroroutput` is non-empty, it means the previously generated test class failed to compile. In this case:
