@@ -39,6 +39,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -207,13 +208,14 @@ public class BuilderUtil {
         });
     }
 
-    public static void deleteFile(Project project, String fileNameToDelete, PsiDirectory packageDir) {
-        Ref<PsiFile> fileToDelete = Ref.create(packageDir.findFile(fileNameToDelete));
-        if (fileToDelete.get() == null) return;
-
+    public static void deleteFiles(Project project, List<String> fileNamesToDelete, PsiDirectory packageDir) {
         WriteCommandAction.runWriteCommandAction(project, () -> {
             try {
-                fileToDelete.get().delete();
+                for(String fileNameToDelete: fileNamesToDelete) {
+                    Ref<PsiFile> fileToDelete = Ref.create(packageDir.findFile(fileNameToDelete));
+                    if (fileToDelete.get() == null) return;
+                    fileToDelete.get().delete();
+                }
             } catch (Exception e) {
                 // Optionally log or show notification
                 e.printStackTrace();

@@ -15,36 +15,6 @@ public final class TestGenerationWorker {
 
     private static final int MAX_ATTEMPTS= 5;// MAX_TESTS = 5;
 
-    private static String runScenarioPipeline(ProgressIndicator indicator, Project project, String testFileName, ScenariosResponseOutput.TestScenario testScenario, String singleTestPromptPlaceholder, String inputClass, PsiDirectory packageDir) {
-        return runPipelineWithRetry(indicator, project, testFileName, testScenario,singleTestPromptPlaceholder,inputClass, packageDir, 0);
-    }
-
-    private static String runPipelineWithRetry(ProgressIndicator indicator, Project project, String testFileName, ScenariosResponseOutput.TestScenario testScenario, String singleTestPromptPlaceholder, String inputClass, PsiDirectory packageDir, int attempt) {
-        Ref<PsiFile> testFile = Ref.create(packageDir.findFile(testFileName));
-        indicator.setText2("Test case Generation - Trying attempt #"+attempt+": "+testFileName);
-        String existingIndividualTestClass = "";
-        String errorOutput = "";
-        if(testFile.get() != null) {
-            existingIndividualTestClass = testFile.get().getText();
-            indicator.setText2("Compiling : "+testFileName);
-            errorOutput = BuilderUtil.compileJUnitClass(project, testFile);
-            indicator.setText2("Compiled : "+testFileName);
-            if (errorOutput.isEmpty()) return existingIndividualTestClass;
-            indicator.setText2("Errorred output - so retrying : "+testFileName);
-            if (attempt >= MAX_ATTEMPTS) {
-                indicator.setText2("Max attempts breached - test ignored : "+testFileName);
-                BuilderUtil.deleteFile(project, testFile.get());
-                return "";
-            }
-        }
-        indicator.setText2("Invoking LLM : "+testFileName);
-        String testClassCode = JAIPilotLLM.getSingleTest(singleTestPromptPlaceholder, testFileName, inputClass, testScenario, existingIndividualTestClass, errorOutput);
-        indicator.setText2("Successfully invoked LLM : "+testFileName);
-        BuilderUtil.write(project, testFile, testClassCode, packageDir, testFileName);
-        indicator.setText2("Writing test to temp file : "+testFileName);
-        return runPipelineWithRetry(indicator, project, testFileName, testScenario, singleTestPromptPlaceholder, inputClass,packageDir, attempt + 1);
-    }
-
     private static void  runAggregationPipeline(ProgressIndicator indicator, Project project, String testFileName, List<String> individualTestCases, String aggregateTestClassPromptPlaceholder, PsiDirectory packageDir) {
         runAggregationWithRetry(indicator, project, testFileName, individualTestCases, aggregateTestClassPromptPlaceholder,packageDir, "",0);
     }
@@ -73,7 +43,6 @@ public final class TestGenerationWorker {
             return;
         }
 
-        String testFileName = cut.getName() + "Test.java";
         String cutClass = cut.getContainingFile().getText();
         String getScenariosPromptPlaceholder = PromptBuilder.getPromptPlaceholder("get-scenarios-prompt");
         String getSingleTestPromptPlaceholder = PromptBuilder.getPromptPlaceholder("get-single-test-prompt");
@@ -82,19 +51,51 @@ public final class TestGenerationWorker {
         indicator.setText("Generating scenarios for "+cutClass.getClass().getName());
         ScenariosResponseOutput scenarios = JAIPilotLLM.getScenarios(getScenariosPromptPlaceholder, cutClass);
 
-        List<String> individualTestCases = new ArrayList<>();
+        int MAX_TESTS = 5;//scenarios.testScenarios.size();
+        List<String> individualTestCases = new ArrayList<>(), errorOutputOfindividualTestCases = new ArrayList<>(), existingIndividualTestClasses = new ArrayList<>(), individualTestFileNames = new ArrayList<>();
 
-        int MAX_TESTS = scenarios.testScenarios.size();
-        for (int index = 1;index <= MAX_TESTS; index++ ) {
-            String individualTestFileName = cut.getName() + "TmpTest"+index+".java";
-            BuilderUtil.deleteFile(project, individualTestFileName, packageDir);
-            ScenariosResponseOutput.TestScenario testScenario = scenarios.testScenarios.get(index);
-            indicator.setText("Generating test "+index+"/"+MAX_TESTS+" : "+testScenario.toOneLiner());
-            String individualTestFileCode = runScenarioPipeline(indicator,project,individualTestFileName,testScenario, getSingleTestPromptPlaceholder, cutClass, packageDir);
-            individualTestCases.add(individualTestFileCode);
-            BuilderUtil.deleteFile(project, individualTestFileName, packageDir);
-            indicator.setText("Generated test "+index+"/"+MAX_TESTS+" : "+testScenario.toOneLiner());
+        // Instantiate
+        for (int index = 0;index < MAX_TESTS; index++ ) {
+            individualTestCases.add("");
+            errorOutputOfindividualTestCases.add("");
+            individualTestFileNames.add(cut.getName() + "TmpTest" + index + ".java");
         }
+        BuilderUtil.deleteFiles(project, individualTestFileNames, packageDir);
+        // Attempts
+        for(int attempt = 1;; attempt++) {
+            indicator.setText("Generating test : attempt" + attempt + "/" + MAX_ATTEMPTS);
+
+            // 1. Build
+            for (int index = 0; index < MAX_TESTS; index++) {
+                if(individualTestCases.get(index) != null) continue;
+                Ref<PsiFile> individualTestFile = Ref.create(packageDir.findFile(individualTestFileNames.get(index)));
+                existingIndividualTestClasses.add(individualTestFile.get() == null?"":individualTestFile.get().getText());
+                if (individualTestFile.get() != null) {
+                    indicator.setText("Compiling #" + attempt + "/" + MAX_ATTEMPTS + " : " + individualTestFileNames.get(index));
+                    String existingIndividualTestClass = individualTestFile.get().getText();
+                    String errorOutput = BuilderUtil.compileJUnitClass(project, individualTestFile);
+                    if (errorOutput.isEmpty()) individualTestCases.set(index, existingIndividualTestClass);
+                    errorOutputOfindividualTestCases.set(index, errorOutput);
+                    indicator.setText("Compiled #" + attempt + "/" + MAX_ATTEMPTS + ": " + individualTestFileNames.get(index));
+                }
+            }
+            if(attempt > MAX_ATTEMPTS) break;
+            // 2. Invoke LLM
+            indicator.setText("Invoking LLM #" + attempt + "/" + MAX_ATTEMPTS);
+            List<String> allSingleTestClassCode = JAIPilotLLM.getAllSingleTest(getSingleTestPromptPlaceholder, individualTestFileNames, cutClass, scenarios.testScenarios, existingIndividualTestClasses, errorOutputOfindividualTestCases);
+            indicator.setText("Successfully invoked LLM #" + attempt + "/" + MAX_ATTEMPTS);
+
+            // 3. Write to temp files
+            for (int index = 0; index < MAX_TESTS; index++) {
+                if(individualTestCases.get(index) != null) continue;
+                indicator.setText("Writing to temp file LLM #" + attempt + "/" + MAX_ATTEMPTS + " : " + individualTestFileNames.get(index));
+                Ref<PsiFile> individualTestFile = Ref.create(packageDir.findFile(individualTestFileNames.get(index)));
+                BuilderUtil.write(project, individualTestFile, allSingleTestClassCode.get(index), packageDir, individualTestFileNames.get(index));
+            }
+        }
+        BuilderUtil.deleteFiles(project, individualTestFileNames, packageDir);
+
+        String testFileName = cut.getName() + "Test.java";
         indicator.setText("Aggregating Test Class "+testFileName);
         runAggregationPipeline(indicator, project, testFileName,individualTestCases, getAggregateTestClassPromptPlaceholder, packageDir);
         indicator.setText("Successfully generated Test Class "+testFileName);
