@@ -8,6 +8,7 @@ import com.intellij.execution.process.ProcessAdapter;
 import com.intellij.execution.process.ProcessEvent;
 import com.intellij.execution.process.ProcessHandler;
 import com.intellij.execution.runners.ExecutionEnvironment;
+import com.intellij.execution.runners.ExecutionEnvironmentBuilder;
 import com.intellij.execution.runners.ExecutionUtil;
 import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.openapi.application.ApplicationManager;
@@ -44,6 +45,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
@@ -58,86 +60,89 @@ public class BuilderUtil {
     private BuilderUtil() {}
 
 
-    public static @NotNull String executeJUnitClass(Project project, PsiClass testClass) {
+    public static @NotNull String executeJUnitClass(Project project, Ref<PsiFile> testFileRef) {
+        StringBuilder failures = new StringBuilder();
+        Pattern TEAMCITY_FAIL = Pattern.compile("^##teamcity\\[testFailed");
 
-        // ── shared state (safe to create off-EDT) ────────────────────────────────
-        StringBuilder  failures = new StringBuilder();
-        CountDownLatch done     = new CountDownLatch(1);
-        Pattern TEAMCITY_FAIL   = Pattern.compile("^##teamcity\\[testFailed");
+        PsiFile psiFile = testFileRef.get();
+        if (!(psiFile instanceof PsiJavaFile)) {
+            return "ERROR: Not a Java file";
+        }
+
+        PsiClass[] classes = ((PsiJavaFile) psiFile).getClasses();
+        if (classes.length == 0) {
+            return "ERROR: No class found in file";
+        }
+
+        PsiClass testClass = classes[0];
 
         ApplicationManager.getApplication().invokeAndWait(() -> {
-
-            // 1 ── flush unsaved edits *on the EDT*
             PsiDocumentManager.getInstance(project).commitAllDocuments();
             FileDocumentManager.getInstance().saveAllDocuments();
+        });
 
-            // 2 ── build a transient JUnit run-config
-            ConfigurationFactory factory =
-                    JUnitConfigurationType.getInstance().getConfigurationFactories()[0];
+        // ── 1 – Create config ─────────────────────────────────────
+        ConfigurationFactory factory = JUnitConfigurationType.getInstance().getConfigurationFactories()[0];
+        RunnerAndConfigurationSettings settings =
+                RunManager.getInstance(project).createConfiguration(testClass.getName(), factory);
 
-            RunnerAndConfigurationSettings settings =
-                    RunManager.getInstance(project).createConfiguration(testClass.getName(), factory);
+        JUnitConfiguration config = (JUnitConfiguration) settings.getConfiguration();
+        config.setModule(ModuleUtilCore.findModuleForPsiElement(testClass));
+        config.setMainClass(testClass);
 
-            JUnitConfiguration cfg = (JUnitConfiguration) settings.getConfiguration();
-            cfg.setModule(ModuleUtilCore.findModuleForPsiElement(testClass));
-            cfg.setMainClass(testClass);
+        Executor executor = DefaultRunExecutor.getRunExecutorInstance();
+        AtomicBoolean processStarted = new AtomicBoolean(false);
 
-            Executor executor = DefaultRunExecutor.getRunExecutorInstance();
+        // ── 2 – Run & wait ────────────────────────────────────────
+        ApplicationManager.getApplication().invokeAndWait(() -> {
+            try {
+                ExecutionEnvironmentBuilder builder = ExecutionEnvironmentBuilder.create(executor, settings);
 
-            // 3 ── hook a listener that fires when *this* run starts
-            MessageBusConnection conn = project.getMessageBus().connect();
-            conn.subscribe(ExecutionManager.EXECUTION_TOPIC, new ExecutionListener() {
-                @Override
-                public void processStarted(@NotNull String executorId,
-                                           @NotNull ExecutionEnvironment env,
-                                           @NotNull ProcessHandler handler) {
-                    if (env.getRunProfile() != cfg) return;   // not our run
+                ExecutionEnvironment environment = builder.build();
+
+                environment.setCallback(descriptor -> {
+                    ProcessHandler handler = descriptor.getProcessHandler();
+                    if (handler == null) {
+                        failures.append("ERROR: No process handler\n");
+                        return;
+                    }
+
+                    processStarted.set(true);
 
                     handler.addProcessListener(new ProcessAdapter() {
                         @Override
                         public void onTextAvailable(@NotNull ProcessEvent e, @NotNull Key outputType) {
                             String txt = e.getText().trim();
                             if (TEAMCITY_FAIL.matcher(txt).find()) {
-                                failures.append(txt.replace("|n", "\n")
-                                                .replace("|r", "\r"))
-                                        .append('\n');
+                                failures.append(txt.replace("|n", "\n").replace("|r", "\r")).append('\n');
                             }
                         }
 
                         @Override
                         public void processTerminated(@NotNull ProcessEvent e) {
-                            done.countDown();
-                            conn.disconnect();
+                            // nothing to do here – the invokeAndWait already blocks till callback ends
                         }
                     });
-                }
 
-                @Override
-                public void processNotStarted(@NotNull String executorId,
-                                              @NotNull ExecutionEnvironment env) {
-                    if (env.getRunProfile() == cfg) {
-                        failures.append("ERROR: test JVM did not start\n");
-                        done.countDown();
-                        conn.disconnect();
-                    }
-                }
-            });
+                    handler.startNotify(); // starts the process listener
+                });
 
-            // 4 ── launch (2-arg overload that exists in your SDK)
-            ExecutionUtil.runConfiguration(settings, executor);
+                ProgramRunnerUtil.executeConfiguration(environment, false, true); // block until run completes
+
+            } catch (Throwable t) {
+                failures.append("ERROR: could not launch test – ").append(t.getMessage()).append('\n');
+            }
         });
 
-        // 5 ── wait ≤ 5 min for test JVM to exit
-        try {
-            if (!done.await(5, TimeUnit.MINUTES))
-                return "ERROR: test execution timed out";
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-            return "ERROR: interrupted while waiting for tests";
+        if (!processStarted.get()) {
+            return "ERROR: Test JVM did not start";
         }
 
-        return failures.length() == 0 ? "" : failures.toString();
+        return failures.toString().trim();
     }
+
+
+
 
     public static String compileJUnitClass(Project project, Ref<PsiFile> testFile)  {
 
@@ -213,7 +218,7 @@ public class BuilderUtil {
             try {
                 for(String fileNameToDelete: fileNamesToDelete) {
                     Ref<PsiFile> fileToDelete = Ref.create(packageDir.findFile(fileNameToDelete));
-                    if (fileToDelete.get() == null) return;
+                    if (fileToDelete.get() == null) continue;
                     fileToDelete.get().delete();
                 }
             } catch (Exception e) {

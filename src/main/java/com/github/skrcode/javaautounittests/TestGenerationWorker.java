@@ -2,6 +2,7 @@ package com.github.skrcode.javaautounittests;
 
 import com.github.skrcode.javaautounittests.DTOs.ScenariosResponseOutput;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.project.Project;
@@ -17,7 +18,7 @@ import java.util.Set;
 
 public final class TestGenerationWorker {
 
-    private static final int MAX_ATTEMPTS= 5;// MAX_TESTS = 5;
+    private static final int MAX_ATTEMPTS= 10;// MAX_TESTS = 5;
 
     private static void  runAggregationPipeline(ProgressIndicator indicator, Project project, String testFileName, List<String> individualTestCases, String aggregateTestClassPromptPlaceholder, PsiDirectory packageDir) {
         runAggregationWithRetry(indicator, project, testFileName, individualTestCases, aggregateTestClassPromptPlaceholder,packageDir, "",0);
@@ -48,15 +49,21 @@ public final class TestGenerationWorker {
                 return;
             }
 
-            String cutClass = cut.getContainingFile().getText();
+            String cutName = ReadAction.compute(() -> cut.isValid() ? cut.getName() : "<invalid>");
+            String cutClass  = ReadAction.compute(() -> {
+                if (!cut.isValid()) return "<invalid>";
+                PsiFile file = cut.getContainingFile();
+                return file != null ? file.getText() : "<no file>";
+            });
+
             String getScenariosPromptPlaceholder = PromptBuilder.getPromptPlaceholder("get-scenarios-prompt");
             String getSingleTestPromptPlaceholder = PromptBuilder.getPromptPlaceholder("get-single-test-prompt");
             String getAggregateTestClassPromptPlaceholder = PromptBuilder.getPromptPlaceholder("aggregate-test-class-prompt");
 
-            indicator.setText("Generating scenarios for " + cut.getName());
+            indicator.setText("Generating scenarios for " + cutName);
             ScenariosResponseOutput scenarios = JAIPilotLLM.getScenarios(getScenariosPromptPlaceholder, cutClass);
 
-            int MAX_TESTS = 5;//scenarios.testScenarios.size();
+            int MAX_TESTS = scenarios.testScenarios.size();
             List<ScenariosResponseOutput.TestScenario> testableScenarios = scenarios.testScenarios.subList(0, Math.min(MAX_TESTS, scenarios.testScenarios.size()));
             Set<Integer> completedTests = new HashSet<>();
             List<String> individualTestCases = new ArrayList<>(), errorOutputOfindividualTestCases = new ArrayList<>(), existingIndividualTestClasses = new ArrayList<>(), individualTestFileNames = new ArrayList<>();
@@ -65,7 +72,7 @@ public final class TestGenerationWorker {
             for (int index = 0; index < MAX_TESTS; index++) {
                 individualTestCases.add("");
                 errorOutputOfindividualTestCases.add("");
-                individualTestFileNames.add(cut.getName() + "TmpTest" + index + ".java");
+                individualTestFileNames.add(cutName + "TmpTest" + index + ".java");
                 existingIndividualTestClasses.add("");
             }
             BuilderUtil.deleteFiles(project, individualTestFileNames, packageDir);
@@ -106,7 +113,7 @@ public final class TestGenerationWorker {
             }
             BuilderUtil.deleteFiles(project, individualTestFileNames, packageDir);
 
-            String testFileName = cut.getName() + "Test.java";
+            String testFileName = cutName + "Test.java";
             indicator.setText("Aggregating Test Class " + testFileName);
             runAggregationPipeline(indicator, project, testFileName, individualTestCases, getAggregateTestClassPromptPlaceholder, packageDir);
             indicator.setText("Successfully generated Test Class " + testFileName);

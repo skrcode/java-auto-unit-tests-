@@ -4,6 +4,7 @@ import com.intellij.ide.BrowserUtil;
 import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
@@ -31,8 +32,10 @@ public final class BulkGeneratorService {
                 int idx = 0;
                 for (PsiClass cut : classes) {
                     if (indicator.isCanceled()) break;
+                    String qName = ReadAction.compute(() ->
+                            cut.isValid() ? cut.getQualifiedName() : "<invalid>");
 
-                    indicator.setText("Processing " + cut.getQualifiedName());
+                    indicator.setText("Processing " + qName);
                     indicator.setFraction(idx++ / (double) classes.size());
                     TestGenerationWorker.process(project, cut, indicator, testRoot);
                 }
