@@ -153,7 +153,7 @@ public final class TestGenerationWorker {
         GlobalSearchScope scope = GlobalSearchScope.allScope(project);
 
         List<String> result = new ArrayList<>();
-
+        if(contextClassesPath == null) return result;
         for (String contextClassPath : contextClassesPath) {
             PsiClass psiClass = ReadAction.compute(() -> psiFacade.findClass(contextClassPath, scope));
 

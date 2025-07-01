@@ -205,9 +205,9 @@ public final class JAIPilotLLM {
                     t.printStackTrace();
                     testClasses.set(idx, "ERROR: " + t.getMessage());
                     contextClasses.set(idx, new ArrayList<>());
-                    ApplicationManager.getApplication().invokeLater(() ->
-                            Messages.showErrorDialog("AI Error: " + t.getClass().getName() + "\n" + t.getMessage(), "LLM Error")
-                    );
+//                    ApplicationManager.getApplication().invokeLater(() ->
+//                            Messages.showErrorDialog("AI Error: " + t.getClass().getName() + "\n" + t.getMessage(), "LLM Error")
+//                    );
                 }
             }, executor);
 
