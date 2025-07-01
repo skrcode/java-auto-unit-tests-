@@ -33,8 +33,7 @@ You will receive:
 10. Additionally, context classes are provided to generate better quality tests.
 11. If additional context classes are required to generate tests, apart from the test class also return output list of file paths that are required. example [ "com.github.skrcode.javaautounittests.ContextModel", "com.x.y.z.SampleClass"]
 12. If additional context classes are not required to generate tests, apart from the test class also return an empty list. example []
-13. If the context class has already been provided, do not ask for the exact same class to be provided again.
-14. Do not ask for context classes that are already public generic classes like apache classes etc. Ask for context classes relevant to this codebase whose context is needed.
+13. Do not ask for context classes that are already public generic classes like apache classes etc. Ask for context classes relevant to this codebase whose context is needed.
 
 ### ERROR FIXING INSTRUCTIONS (if erroroutput is present)
 If `erroroutput` is non-empty, it means the previously generated test class failed to compile. In this case:
@@ -44,6 +43,7 @@ If `erroroutput` is non-empty, it means the previously generated test class fail
 - Use only method/field names from the actual CUT. Do not guess types or methods that do not exist.
 - If you are mocking a return type, ensure it is a concrete POJO — not a class or method that does not exist in the CUT.
 - Fully simulate compilation in your head before returning the code.
+- Use the context classes as well if needed to fix the errors
 
 ### INTERNAL REASONING STEPS (do NOT output)
 1. Parse the CUT to identify fields, constructor dependencies, method signatures, and visibility.
@@ -55,7 +55,7 @@ If `erroroutput` is non-empty, it means the previously generated test class fail
 7. Generate only one test method using real types, return values, and expected behaviors.
 8. Simulate compilation — if errors will occur, replan until the code compiles.
 9. If compilation errors are passed in, use them to guide patching of the testclass.
-10. Identify required classes to generate the test case. There may be multiple such classes that could be required.
+10. Identify required classes that additionally need to be provided for context in order to generate the test case. There may be multiple such classes that could be required.
 
 ### Input Class
 {{inputclass}}
