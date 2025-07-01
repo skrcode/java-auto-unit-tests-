@@ -2,7 +2,9 @@ package com.github.skrcode.javaautounittests;
 
 import com.github.skrcode.javaautounittests.settings.AISettings;
 import com.github.skrcode.javaautounittests.settings.AISettingsConfigurable;
+import com.github.skrcode.javaautounittests.settings.AISettingsDialog;
 import com.intellij.openapi.actionSystem.*;
+import com.intellij.openapi.options.ShowSettingsUtil;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
@@ -35,6 +37,11 @@ public class GenerateTestAction extends AnAction implements DumbAware {
             Messages.showErrorDialog(project, "Please configure details in settings.", "JAIPilot");
             return;
         }
+        // Show settings dialog
+        AISettingsDialog dialog = new AISettingsDialog();
+        boolean okPressed = dialog.showAndGet(); // returns true if OK, false if Cancel
+
+        if (!okPressed) return;
         BulkGeneratorService.enqueue(project, classes, stringPathToPsiDirectory(project,AISettings.getInstance().getTestDirectory()));
     }
 

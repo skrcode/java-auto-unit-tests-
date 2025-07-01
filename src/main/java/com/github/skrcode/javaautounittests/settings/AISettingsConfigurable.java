@@ -51,7 +51,7 @@ public class AISettingsConfigurable implements Configurable {
 
         // Add components
         panel.add(Box.createVerticalStrut(8));
-        panel.add(new JLabel("OpenAI API Key:"));
+        panel.add(new JLabel("Model API Key:"));
         panel.add(Box.createVerticalStrut(4));
         panel.add(apiKeyField);
         panel.add(Box.createVerticalStrut(12));
