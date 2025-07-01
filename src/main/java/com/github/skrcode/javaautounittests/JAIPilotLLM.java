@@ -284,12 +284,12 @@ public final class JAIPilotLLM {
     private static GenerateContentResponse invokeGemini(String prompt, Schema schema) {
         Client client = Client.builder().apiKey(AISettings.getInstance().getOpenAiKey()).build();
         GenerateContentConfig generateContentConfig = GenerateContentConfig.builder().responseMimeType("application/json").candidateCount(1).responseSchema(schema).build();
-        GenerateContentResponse response = client.models.generateContent("gemini-2.0-flash-lite", prompt, generateContentConfig);
+        GenerateContentResponse response = client.models.generateContent("gemini-2.0-flash", prompt, generateContentConfig);
         return response;
     }
 
     private static GenerateContentResponse invokeGeminiApi(String prompt, Schema schema, Client client, GenerateContentConfig generateContentConfig) {
-        GenerateContentResponse response = client.models.generateContent("gemini-2.0-flash-lite", prompt, generateContentConfig);
+        GenerateContentResponse response = client.models.generateContent("gemini-2.0-flash", prompt, generateContentConfig);
         return response;
     }
 }
