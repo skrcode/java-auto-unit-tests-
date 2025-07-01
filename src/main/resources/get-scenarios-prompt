@@ -25,6 +25,7 @@ Return a list of objects in the following format:
 4. Do not include Java code or comments. Output must be pure JSON, as specified above.
 5. Do not invent return types or parameter types — only use what is found in the actual CUT.
 6. Do not use Markdown or wrap the output in a code block.
+7. Generate at most 10 top scenarios. Do not generate a lot of scenarios only just enough to get high coverage.
 
 ### INTERNAL REASONING STEPS (do NOT output)
 1. Parse the CUT to identify all public/protected methods.

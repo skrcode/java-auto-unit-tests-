@@ -1,5 +1,6 @@
 package com.github.skrcode.javaautounittests.settings;
 
+import com.github.skrcode.javaautounittests.PromptBuilder;
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.ui.TextFieldWithBrowseButton;
@@ -8,6 +9,7 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.Map;
 
 public class AISettingsConfigurable implements Configurable {
 
@@ -33,8 +35,9 @@ public class AISettingsConfigurable implements Configurable {
         apiKeyField.setAlignmentX(Component.LEFT_ALIGNMENT);
         apiKeyField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
 
-        // Model dropdown
-        modelCombo = new JComboBox<>(new String[]{"gpt-4.1-nano","gpt-4.1-mini","gpt-4o-mini","gpt-4.1","gpt-4o","o4-mini","o3-mini","o1-mini","o3","o1"});
+        // Create model combo with placeholder first
+        modelCombo = new JComboBox<>(new String[]{"Loading models..."});
+        modelCombo.setEnabled(false);
         modelCombo.setAlignmentX(Component.LEFT_ALIGNMENT);
         modelCombo.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
 
@@ -49,7 +52,7 @@ public class AISettingsConfigurable implements Configurable {
                 FileChooserDescriptorFactory.createSingleFolderDescriptor()
         );
 
-        // Add components
+        // Add components to panel
         panel.add(Box.createVerticalStrut(8));
         panel.add(new JLabel("Model API Key:"));
         panel.add(Box.createVerticalStrut(4));
@@ -64,9 +67,41 @@ public class AISettingsConfigurable implements Configurable {
         panel.add(testDirField);
         panel.add(Box.createVerticalGlue());
 
+        // Load model list in background
+        new Thread(this::loadModelsInBackground).start();
 
         return panel;
     }
+
+    private void loadModelsInBackground() {
+        try {
+            Map<String, java.util.List<String>> models = PromptBuilder.getModels(); // your working method
+            java.util.List<String> allModels = models.values().stream().flatMap(java.util.List::stream).toList();
+
+            SwingUtilities.invokeLater(() -> {
+                modelCombo.removeAllItems();
+                for (String model : allModels) {
+                    modelCombo.addItem(model);
+                }
+                modelCombo.setEnabled(true);
+
+                // Restore previously selected model if any
+                String savedModel = AISettings.getInstance().getState().model;
+                if (savedModel != null && allModels.contains(savedModel)) {
+                    modelCombo.setSelectedItem(savedModel);
+                }
+            });
+
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            SwingUtilities.invokeLater(() -> {
+                modelCombo.removeAllItems();
+                modelCombo.addItem("Error loading models");
+                modelCombo.setEnabled(false);
+            });
+        }
+    }
+
 
 
 
