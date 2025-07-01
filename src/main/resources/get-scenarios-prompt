@@ -16,16 +16,11 @@ Return a list of objects in the following format:
 ]
 
 ### RULES & CONSTRAINTS
-1. For each public/protected method in the CUT, generate:
-   • One happy path scenario.
-   • One exception path scenario (e.g., null input, invalid state).
-   • One edge/boundary case scenario (e.g., empty list, zero value).
-2. Only use method names, return types, and parameter names that actually exist in the CUT.
-3. Scenario descriptions must be short but precise, describing what the input condition is and what the method is expected to return or throw.
-4. Do not include Java code or comments. Output must be pure JSON, as specified above.
-5. Do not invent return types or parameter types — only use what is found in the actual CUT.
-6. Do not use Markdown or wrap the output in a code block.
-7. Generate at most 10 top scenarios. Do not generate a lot of scenarios only just enough to get high coverage.
+1. Only use method names, return types, and parameter names that actually exist in the CUT.
+2. Scenario descriptions must be short but precise, describing what the input condition is and what the method is expected to return or throw.
+3. Do not include Java code or comments. Output must be pure JSON, as specified above.
+4. Do not invent return types or parameter types — only use what is found in the actual CUT.
+5. Do not use Markdown or wrap the output in a code block.
 
 ### INTERNAL REASONING STEPS (do NOT output)
 1. Parse the CUT to identify all public/protected methods.
