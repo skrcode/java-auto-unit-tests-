@@ -1,20 +1,24 @@
 package com.github.skrcode.javaautounittests;
 
 import com.github.skrcode.javaautounittests.DTOs.ScenariosResponseOutput;
+import com.github.skrcode.javaautounittests.DTOs.SingleTestPromptResponseOutput;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
+import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.Ref;
 import com.intellij.psi.*;
+import com.intellij.psi.search.GlobalSearchScope;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public final class TestGenerationWorker {
 
@@ -67,15 +71,17 @@ public final class TestGenerationWorker {
             List<ScenariosResponseOutput.TestScenario> testableScenarios = scenarios.testScenarios.subList(0, Math.min(MAX_TESTS, scenarios.testScenarios.size()));
             Set<Integer> completedTests = new HashSet<>();
             List<String> individualTestCases = new ArrayList<>(), errorOutputOfindividualTestCases = new ArrayList<>(), existingIndividualTestClasses = new ArrayList<>(), individualTestFileNames = new ArrayList<>();
-
+            List<List<String>> contextClassesForEachIndividualTest = new ArrayList<>();
             // Instantiate
             for (int index = 0; index < MAX_TESTS; index++) {
                 individualTestCases.add("");
                 errorOutputOfindividualTestCases.add("");
                 individualTestFileNames.add(cutName + "TmpTest" + index + ".java");
                 existingIndividualTestClasses.add("");
+                contextClassesForEachIndividualTest.add(new ArrayList<>());
             }
             BuilderUtil.deleteFiles(project, individualTestFileNames, packageDir);
+
             // Attempts
             for (int attempt = 1; ; attempt++) {
                 indicator.setText("Generating test : attempt" + attempt + "/" + MAX_ATTEMPTS);
@@ -100,15 +106,20 @@ public final class TestGenerationWorker {
                 if (attempt > MAX_ATTEMPTS) break;
                 // 2. Invoke LLM
                 indicator.setText("Invoking LLM #" + attempt + "/" + MAX_ATTEMPTS);
-                List<String> allSingleTestClassCode = JAIPilotLLM.getAllSingleTest(completedTests, getSingleTestPromptPlaceholder, individualTestFileNames, cutClass, testableScenarios, existingIndividualTestClasses, errorOutputOfindividualTestCases);
+                List<List<String>> contextClassesSourceForEachIndividualClass = contextClassesForEachIndividualTest.stream().map(
+                        contextClassesForTest -> getSourceCodeOfContextClasses(project,contextClassesForTest)
+                ).collect(Collectors.toList());
+
+                SingleTestPromptResponseOutput singleTestPromptResponseOutput = JAIPilotLLM.getAllSingleTest(completedTests, getSingleTestPromptPlaceholder, individualTestFileNames, cutClass, testableScenarios, existingIndividualTestClasses, errorOutputOfindividualTestCases, contextClassesSourceForEachIndividualClass);
                 indicator.setText("Successfully invoked LLM #" + attempt + "/" + MAX_ATTEMPTS);
 
                 // 3. Write to temp files
                 for (int index = 0; index < MAX_TESTS; index++) {
                     if (completedTests.contains(index)) continue;
                     indicator.setText("Writing to temp file LLM #" + attempt + "/" + MAX_ATTEMPTS + " : " + individualTestFileNames.get(index));
+                    contextClassesForEachIndividualTest.set(index,singleTestPromptResponseOutput.getContextClassesForEachIndividualClass().get(index));
                     Ref<PsiFile> individualTestFile = Ref.create(packageDir.findFile(individualTestFileNames.get(index)));
-                    BuilderUtil.write(project, individualTestFile, allSingleTestClassCode.get(index), packageDir, individualTestFileNames.get(index));
+                    BuilderUtil.write(project, individualTestFile, singleTestPromptResponseOutput.getTestClassCodeForEachIndividualClass().get(index), packageDir, individualTestFileNames.get(index));
                 }
             }
             BuilderUtil.deleteFiles(project, individualTestFileNames, packageDir);
@@ -136,6 +147,33 @@ public final class TestGenerationWorker {
         String relPath = cutPkg.getQualifiedName().replace('.', '/');
         return getOrCreateSubdirectoryPath(project, testRoot, relPath);
     }
+
+    private static List<String> getSourceCodeOfContextClasses(Project project, List<String> contextClassesPath) {
+        JavaPsiFacade psiFacade = JavaPsiFacade.getInstance(project);
+        GlobalSearchScope scope = GlobalSearchScope.allScope(project);
+
+        List<String> result = new ArrayList<>();
+
+        for (String contextClassPath : contextClassesPath) {
+            PsiClass psiClass = ReadAction.compute(() -> psiFacade.findClass(contextClassPath, scope));
+
+            if (psiClass == null || !psiClass.isValid()) {
+                result.add("");
+                continue;
+            }
+
+            PsiFile file = psiClass.getContainingFile();
+            if (file == null || !file.isValid()) {
+                result.add("");
+                continue;
+            }
+            String code = ReadAction.compute(file::getText);
+            result.add(code);
+        }
+
+        return result;
+    }
+
 
     /** Recursively find or create nested sub-directories like {@code org/example/service}. */
     private static @Nullable PsiDirectory getOrCreateSubdirectoryPath(Project project,
