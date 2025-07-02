@@ -43,6 +43,7 @@ If `erroroutput` is non-empty, it means the previously generated test class fail
 - Use only method/field names from the actual CUT. Do not guess types or methods that do not exist.
 - If you are mocking a return type, ensure it is a concrete POJO — not a class or method that does not exist in the CUT.
 - Fully simulate compilation in your head before returning the code.
+- Use the context classes as well if needed to fix the errors
 
 ### INTERNAL REASONING STEPS (do NOT output)
 1. Parse the CUT to identify fields, constructor dependencies, method signatures, and visibility.
