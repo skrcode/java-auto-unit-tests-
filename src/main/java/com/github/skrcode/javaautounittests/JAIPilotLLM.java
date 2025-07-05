@@ -18,6 +18,10 @@ import com.openai.models.responses.ResponseCreateParams;
 import com.openai.models.responses.StructuredResponseCreateParams;
 import com.google.genai.Client;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -143,7 +147,7 @@ public final class JAIPilotLLM {
         return testClasses;
     }
 
-    public static SingleTestPromptResponseOutput getAllSingleTest(Set<Integer> completedTests, String promptPlaceholder, List<String> testClassNames, String inputClass, List<ScenariosResponseOutput.TestScenario> testScenarios, List<String> existingTestClasses, List<String> errorOutputs, List<List<String>> contextClassesSourceForEachIndividualClass) {
+    public static SingleTestPromptResponseOutput getAllSingleTest(Set<Integer> completedTests, String promptPlaceholder, List<String> testClassNames, String inputClass, List<ScenariosResponseOutput.TestScenario> testScenarios, List<String> existingTestClasses, List<String> errorOutputs, List<List<String>> contextClassesSourceForEachIndividualClass, int attempt) {
         ExecutorService executor = Executors.newCachedThreadPool();
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         List<String> testClasses = new ArrayList<>(Collections.nCopies(testScenarios.size(), ""));
@@ -192,6 +196,17 @@ public final class JAIPilotLLM {
                 prompt = prompt.replace(entry.getKey(), entry.getValue());
             }
             String finalPrompt = prompt;
+
+            try {
+                Path dirPath = Paths.get(AISettings.getInstance().getTestDirectory()+"/prompt-logs");
+                if (!Files.exists(dirPath)) {
+                    Files.createDirectories(dirPath); // create parent dirs if not exist
+                }
+                Path filePath = dirPath.resolve("Prompt"+testClassNames.get(idx)+"-"+attempt+".txt");
+                Files.write(filePath, finalPrompt.getBytes(StandardCharsets.UTF_8));
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
 
             CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
                 try {
@@ -289,7 +304,7 @@ public final class JAIPilotLLM {
     }
 
     private static GenerateContentResponse invokeGeminiApi(String prompt, Schema schema, Client client, GenerateContentConfig generateContentConfig) {
-        GenerateContentResponse response = client.models.generateContent("gemini-2.0-flash", prompt, generateContentConfig);
+        GenerateContentResponse response = client.models.generateContent("gemini-2.5-flash", prompt, generateContentConfig);
         return response;
     }
 }
